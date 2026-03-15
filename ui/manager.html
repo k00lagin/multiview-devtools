@@ -1,0 +1,428 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>DevTools Manager</title>
+  <style>
+    :root {
+      /* base (light) palette approximating DevTools */
+      --bg: #f8f9fa;
+      --panel: #e0e8f6;
+      --border: #d3e3fd;
+      --text: #24292e;
+      --muted: #57606a;
+      --accent: #1a73e8;
+      --tab-bg: #f3f4f6;
+      --tab-active-bg: #ffffff;
+      --tab-text: #111827;
+      --tab-active-text: #111827;
+      --tab-border: #d1d5db;
+      --header-height: 26px;
+      --font: 12px/1.4 "Roboto", "Segoe UI", "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    }
+
+    :root[data-theme="dark"] {
+      --bg: #202124;
+      --panel: #0f1113;
+      --border: #2a2f36;
+      --text: #e8eaed;
+      --muted: #9aa0a6;
+      --accent: #8ab4f8;
+      --tab-bg: #171a1d;
+      --tab-active-bg: #0f1113;
+      --tab-text: #cbd5e1;
+      --tab-active-text: #ffffff;
+      --tab-border: #2a2f36;
+    }
+
+    /* System theme resolves via media query when data-theme=system */
+    :root[data-theme="system"] {
+      /* defaults are light; override to dark when prefers dark */
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root[data-theme="system"] {
+        --bg: #202124;
+        --panel: #0f1113;
+        --border: #2a2f36;
+        --text: #e8eaed;
+        --muted: #9aa0a6;
+        --accent: #8ab4f8;
+        --tab-bg: #171a1d;
+        --tab-active-bg: #0f1113;
+        --tab-text: #cbd5e1;
+        --tab-active-text: #ffffff;
+        --tab-border: #2a2f36;
+      }
+    }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      font: var(--font);
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .toolbar {
+      height: var(--header-height);
+      box-sizing: border-box;
+      padding: 0 4px;
+      background: var(--panel);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: inset 0 -1px 0 var(--border);
+    }
+
+    #filter {
+      max-width: 140px;
+      flex: 1;
+      padding: 4px 6px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .picker {
+      position: relative;
+    }
+
+    .picker__select--hidden {
+      position: absolute;
+      opacity: 0;
+      width: 1px;
+      height: 1px;
+    }
+
+    .btn {
+      background: transparent;
+      color: var(--text);
+      border: none;
+      padding: 0;
+      border-radius: 3px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn:hover {
+      border: none;
+    }
+
+    .btn--icon {
+      width: 20px;
+      height: 20px;
+    }
+
+    .btn--tiny {
+      width: 16px;
+      height: 16px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      flex: 1;
+      overflow-x: auto;
+    }
+
+    .tabs__tab {
+      color: var(--tab-text);
+      padding: 0 6px;
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      position: relative;
+    }
+
+    .tabs__tab--active {
+      --panel: var(--tab-active-bg);
+      background: var(--panel);
+      color: var(--tab-active-text);
+      border: 1px solid var(--tab-border);
+    }
+
+    .tabs__id {
+      opacity: 0.6;
+      margin-left: 4px;
+      font-size: 11px;
+    }
+
+    .tabs__close {
+      background-color: var(--panel);
+      border-radius: 3px;
+      display: none;
+      position: absolute;
+      right: 6px;
+    }
+
+    .tabs__tab:hover .tabs__close {
+      display: inline-flex;
+    }
+
+    main {
+      flex: 1;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .empty {
+      padding: 16px;
+      opacity: 0.7;
+    }
+
+    .icon {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
+  </style>
+</head>
+
+<body>
+  <svg width="0" height="0" style="position:absolute">
+    <symbol viewBox="0 0 24 24" id="material-symbols--dark-mode" xmlns="http://www.w3.org/2000/svg">
+      <path fill="currentColor"
+        d="M12 21q-3.75 0-6.375-2.625T3 12t2.625-6.375T12 3q.35 0 .688.025t.662.075q-1.025.725-1.638 1.888T11.1 7.5q0 2.25 1.575 3.825T16.5 12.9q1.375 0 2.525-.613T20.9 10.65q.05.325.075.662T21 12q0 3.75-2.625 6.375T12 21" />
+    </symbol>
+    <symbol viewBox="0 0 24 24" id="material-symbols--light-mode" xmlns="http://www.w3.org/2000/svg">
+      <path fill="currentColor"
+        d="M12 17q-2.075 0-3.537-1.463T7 12t1.463-3.537T12 7t3.538 1.463T17 12t-1.463 3.538T12 17m-7-4H1v-2h4zm18 0h-4v-2h4zM11 5V1h2v4zm0 18v-4h2v4zM6.4 7.75 3.875 5.325 5.3 3.85l2.4 2.5zm12.3 12.4-2.425-2.525L17.6 16.25l2.525 2.425zM16.25 6.4l2.425-2.525L20.15 5.3l-2.5 2.4zM3.85 18.7l2.525-2.425L7.75 17.6l-2.425 2.525z" />
+    </symbol>
+    <symbol viewBox="0 0 24 24" id="material-symbols--refresh" xmlns="http://www.w3.org/2000/svg">
+      <path fill="currentColor"
+        d="M12 20q-3.35 0-5.675-2.325T4 12t2.325-5.675T12 4q1.725 0 3.3.712T18 6.75V4h2v7h-7V9h4.2q-.8-1.4-2.187-2.2T12 6Q9.5 6 7.75 7.75T6 12t1.75 4.25T12 18q1.925 0 3.475-1.1T17.65 14h2.1q-.7 2.65-2.85 4.325T12 20" />
+    </symbol>
+    <symbol viewBox="0 0 24 24" id="mdi--close" xmlns="http://www.w3.org/2000/svg">
+      <path fill="currentColor"
+        d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+    </symbol>
+    <symbol viewBox="0 0 24 24" id="mdi--plus" xmlns="http://www.w3.org/2000/svg">
+      <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" />
+    </symbol>
+    <symbol viewBox="0 0 24 24" id="mdi--theme-light-dark" xmlns="http://www.w3.org/2000/svg">
+      <path fill="currentColor"
+        d="M7.5 2c-1.79 1.15-3 3.18-3 5.5s1.21 4.35 3.03 5.5C4.46 13 2 10.54 2 7.5A5.5 5.5 0 0 1 7.5 2m11.57 1.5 1.43 1.43L4.93 20.5 3.5 19.07zm-6.18 2.43L11.41 5 9.97 6l.42-1.7L9 3.24l1.75-.12.58-1.65L12 3.1l1.73.03-1.35 1.13zm-3.3 3.61-1.16-.73-1.12.78.34-1.32-1.09-.83 1.36-.09.45-1.29.51 1.27 1.36.03-1.05.87zM19 13.5a5.5 5.5 0 0 1-5.5 5.5c-1.22 0-2.35-.4-3.26-1.07l7.69-7.69c.67.91 1.07 2.04 1.07 3.26m-4.4 6.58 2.77-1.15-.24 3.35zm4.33-2.7 1.15-2.77 2.2 2.54zm1.15-4.96-1.14-2.78 3.34.24zM9.63 18.93l2.77 1.15-2.53 2.19z" />
+    </symbol>
+  </svg>
+  <header class="toolbar">
+    <div class="tabs" id="tabs"></div>
+    <div class="picker">
+      <button id="add" class="btn btn--icon picker__button" title="Add tab" aria-label="Add tab">
+        <svg class="icon">
+          <use href="#mdi--plus"></use>
+        </svg>
+      </button>
+      <select id="picker" class="picker__select picker__select--hidden" title="Add tab" aria-label="Add tab">
+        <option value="" disabled selected>Add tab…</option>
+      </select>
+    </div>
+    <div class="picker">
+      <button id="themeBtn" class="btn btn--icon picker__button" title="Theme" aria-label="Theme">
+        <svg class="icon">
+          <use href="#mdi--theme-light-dark"></use>
+        </svg>
+      </button>
+      <select id="theme" class="picker__select picker__select--hidden" title="Theme" aria-label="Theme">
+        <option value="system">System</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </div>
+    <button id="refresh" class="btn btn--icon" title="Refresh list" aria-label="Refresh list">
+      <svg class="icon">
+        <use href="#material-symbols--refresh"></use>
+      </svg>
+    </button>
+  </header>
+  <main>
+    <div id="empty" class="empty" style="display:none">No webContents detected.</div>
+  </main>
+  <script>
+    const $ = (sel) => document.querySelector(sel);
+    const tabsEl = $('#tabs');
+    const emptyEl = $('#empty');
+    const refreshBtn = $('#refresh');
+    const themeSel = $('#theme');
+    const picker = $('#picker');
+    const addBtn = $('#add');
+    const themeBtn = $('#themeBtn');
+    let current = [];
+    let activeId = null;
+    const visibleSet = new Set();
+    let visibleOrder = [];
+
+    function syncPickerOptions() {
+      picker.innerHTML = '';
+      const ph = document.createElement('option'); ph.value = ''; ph.disabled = true; ph.selected = true; ph.textContent = 'Add tab…'; picker.appendChild(ph);
+      // sort by id ascending
+      const sorted = [...current].sort((a, b) => (a.id - b.id));
+      for (const item of sorted) {
+        const opt = document.createElement('option');
+        opt.value = String(item.id);
+        const title = (item.title && String(item.title).trim()) ? item.title : `wc:${item.id}`;
+        opt.textContent = `${item.id}: ${title}`;
+        picker.appendChild(opt);
+      }
+    }
+
+    function renderTabs() {
+      tabsEl.innerHTML = '';
+      const hasAny = visibleOrder.length > 0 && current.length > 0;
+      emptyEl.style.display = hasAny ? 'none' : 'block';
+      for (let i = 0; i < visibleOrder.length; i++) {
+        const id = visibleOrder[i];
+        const item = current.find(x => x.id === id);
+        if (!item) continue;
+        const tab = document.createElement('div');
+        tab.className = 'tabs__tab' + (id === activeId ? ' tabs__tab--active' : '');
+        tab.setAttribute('draggable', 'true');
+        tab.dataset.id = String(id);
+        tab.dataset.index = String(i);
+        const title = document.createElement('span');
+        title.textContent = item.title || `wc:${item.id}`;
+        const idSpan = document.createElement('span'); idSpan.className = 'tabs__id'; idSpan.textContent = `#${item.id}`;
+        const close = document.createElement('button'); close.className = 'btn btn--tiny tabs__close'; close.title = 'Close'; close.setAttribute('aria-label', 'Close'); close.innerHTML = '<svg class=\"icon\"><use href=\"#mdi--close\"></use></svg>';
+        close.addEventListener('click', (e) => {
+          e.stopPropagation();
+          visibleSet.delete(id);
+          visibleOrder = visibleOrder.filter(x => x !== id);
+          if (activeId === id) {
+            activeId = visibleOrder[0] ?? null;
+            if (activeId != null) window.emd.activate(activeId);
+          }
+          window.emd.destroyDevtools(id);
+          renderTabs();
+        });
+        tab.addEventListener('click', () => {
+          activeId = id;
+          window.emd.activate(id);
+          renderTabs();
+        });
+        tab.addEventListener('dblclick', () => {
+          if (activeId !== id) {
+            activeId = id;
+            window.emd.activate(id);
+            renderTabs();
+          }
+          window.emd.focus(id);
+        });
+        tab.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/plain', String(i));
+        });
+        tab.addEventListener('dragover', (e) => { e.preventDefault(); });
+        tab.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const from = Number(e.dataTransfer.getData('text/plain'));
+          const to = i;
+          if (!Number.isNaN(from) && from !== to) {
+            const moved = visibleOrder.splice(from, 1)[0];
+            visibleOrder.splice(to, 0, moved);
+            renderTabs();
+          }
+        });
+        tab.appendChild(title);
+        tab.appendChild(idSpan);
+        tab.appendChild(close);
+        tabsEl.appendChild(tab);
+      }
+    }
+
+    function addTabById(id) {
+      id = Number(id);
+      if (!Number.isFinite(id)) return;
+      if (!visibleSet.has(id)) {
+        visibleSet.add(id);
+        visibleOrder.push(id);
+      }
+      activeId = id;
+      window.emd.activate(id);
+      renderTabs();
+    }
+
+    window.emd.onList((list) => {
+      current = Array.isArray(list) ? list : [];
+      // remove tabs for ids no longer present
+      visibleOrder = visibleOrder.filter(id => current.some(x => x.id === id));
+      for (const id of Array.from(visibleSet)) {
+        if (!current.some(x => x.id === id)) visibleSet.delete(id);
+      }
+      if (!current.some(x => x.id === activeId)) activeId = visibleOrder[0] ?? null;
+      syncPickerOptions();
+      renderTabs();
+    });
+    window.emd.onActive((id) => { activeId = id; renderTabs(); });
+
+    addBtn.addEventListener('click', () => {
+      try { picker.showPicker ? picker.showPicker() : picker.click(); } catch { picker.click(); }
+    });
+    picker.addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (val) addTabById(val);
+      // reset to placeholder to allow re-adding
+      picker.value = '';
+    });
+
+    refreshBtn.addEventListener('click', () => window.emd.refresh());
+
+    // theme handling
+    function applyTheme(val) {
+      const v = (val || 'system');
+      document.documentElement.setAttribute('data-theme', v);
+      try { localStorage.setItem('emd_theme', v); } catch { }
+    }
+    function updateThemeIcon(val) {
+      const use = document.querySelector('#themeBtn use');
+      if (!use) return;
+      const v = (val || themeSel.value || 'system');
+      let icon = '#mdi--theme-light-dark';
+      if (v === 'light') icon = '#material-symbols--light-mode';
+      else if (v === 'dark') icon = '#material-symbols--dark-mode';
+      use.setAttribute('href', icon);
+    }
+    (function initTheme() {
+      let saved = 'system';
+      try { saved = localStorage.getItem('emd_theme') || 'system'; } catch { }
+      themeSel.value = saved;
+      applyTheme(saved);
+      updateThemeIcon(saved);
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      mq.addEventListener?.('change', () => {
+        if ((document.documentElement.getAttribute('data-theme') || 'system') === 'system') {
+          renderTabs();
+        }
+      });
+    })();
+    themeSel.addEventListener('change', (e) => {
+      const v = e.target.value;
+      applyTheme(v);
+      updateThemeIcon(v);
+    });
+    themeBtn.addEventListener('click', () => {
+      try { themeSel.showPicker ? themeSel.showPicker() : themeSel.click(); } catch { themeSel.click(); }
+    });
+
+    // initial
+    window.emd.requestList();
+  </script>
+</body>
+
+</html>
