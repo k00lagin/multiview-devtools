@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 
 import type { ManagerSnapshot, ThemeMode } from '@shared/contracts';
 
@@ -11,8 +11,6 @@ const emptySnapshot: ManagerSnapshot = {
 
 export function useManagerState() {
   const snapshot = ref<ManagerSnapshot>(emptySnapshot);
-  const query = ref('');
-  const paletteOpen = ref(false);
   let unsubscribe: (() => void) | undefined;
 
   onMounted(async () => {
@@ -26,36 +24,12 @@ export function useManagerState() {
     unsubscribe?.();
   });
 
-  const filteredTargets = computed(() => {
-    const normalizedQuery = query.value.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return snapshot.value.targets;
-    }
-
-    return snapshot.value.targets.filter((target) => {
-      const haystacks = [
-        target.runtimeId,
-        target.meta.title,
-        target.meta.url,
-        target.meta.hostname,
-        target.meta.ownerWindowTitle,
-      ];
-
-      return haystacks.some((value) =>
-        String(value ?? '')
-          .toLowerCase()
-          .includes(normalizedQuery),
-      );
-    });
-  });
-
   async function refreshTargets() {
     await window.multiviewDevtools.refreshTargets();
   }
 
   async function openTab(runtimeId: number) {
     await window.multiviewDevtools.openTab(runtimeId);
-    paletteOpen.value = false;
   }
 
   async function activateTab(runtimeId: number) {
@@ -92,9 +66,6 @@ export function useManagerState() {
 
   return {
     snapshot,
-    query,
-    paletteOpen,
-    filteredTargets,
     refreshTargets,
     openTab,
     activateTab,

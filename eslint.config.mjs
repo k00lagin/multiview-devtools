@@ -5,7 +5,7 @@ import pluginVue from 'eslint-plugin-vue';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**'],
+    ignores: ['dist/**', 'node_modules/**', 'index.js', 'ui/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -31,6 +31,16 @@ export default tseslint.config(
     files: ['src/renderer/src/**/*.{ts,vue}'],
     languageOptions: {
       globals: globals.browser,
+    },
+  },
+  {
+    files: ['dev/**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: globals.node,
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
     },
   },
 );

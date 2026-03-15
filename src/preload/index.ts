@@ -6,7 +6,7 @@ const bridge: RendererBridge = {
   getSnapshot: () => ipcRenderer.invoke(IPC_CHANNELS.getSnapshot),
   subscribe(callback) {
     const handler = (
-      _event: Electron.IpcRendererEvent,
+      _event: unknown,
       snapshot: Awaited<ReturnType<RendererBridge['getSnapshot']>>,
     ) => {
       callback(snapshot);

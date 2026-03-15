@@ -1,6 +1,13 @@
 import path from 'node:path';
 
-import { app, BaseWindow, WebContentsView, ipcMain, webContents as webContentsModule } from 'electron';
+import {
+  app,
+  BaseWindow,
+  BrowserWindow,
+  WebContentsView,
+  ipcMain,
+  webContents as webContentsModule,
+} from 'electron';
 import type { Rectangle, WebContents } from 'electron';
 
 import { IPC_CHANNELS } from '../shared/ipc';
@@ -40,6 +47,7 @@ interface InternalState {
   options: InitDevToolsManagerOptions;
   managerWindow: BaseWindow | null;
   managerUiView: WebContentsView | null;
+  managerOverlayView: WebContentsView | null;
   targets: Map<RuntimeTargetId, ManagedTargetRecord>;
   tabs: Map<RuntimeTargetId, ManagedTabRecord>;
   tabOrder: RuntimeTargetId[];
@@ -52,12 +60,14 @@ interface InternalState {
   ipcBound: boolean;
 }
 
-const MANAGER_HEADER_HEIGHT = 64;
+const MANAGER_HEADER_HEIGHT = 26;
+const DEBUGGER_PROTOCOL_VERSION = '1.3';
 const state: InternalState = {
   initialized: false,
   options: {},
   managerWindow: null,
   managerUiView: null,
+  managerOverlayView: null,
   targets: new Map(),
   tabs: new Map(),
   tabOrder: [],
@@ -74,12 +84,57 @@ function getCurrentDir() {
   return typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 }
 
+function getRuntimeRootDir() {
+  return path.resolve(getCurrentDir(), '..');
+}
+
 function getRendererEntryPath() {
-  return path.join(getCurrentDir(), 'renderer', 'index.html');
+  return path.join(getRuntimeRootDir(), 'renderer', 'index.html');
 }
 
 function getPreloadPath() {
-  return path.join(getCurrentDir(), 'preload.cjs');
+  return path.join(getRuntimeRootDir(), 'preload', 'index.js');
+}
+
+function buildOverlayDataUrl() {
+  const html = `<!doctype html>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>manager:overlay</title>
+      <style>
+        html, body {
+          width: 100%;
+          height: 100%;
+          margin: 0;
+          background: transparent;
+          color: #e8eaed;
+          font: 12px/1.4 "Segoe UI", sans-serif;
+        }
+
+        body {
+          display: grid;
+          place-items: center;
+          border: 1px dashed rgba(138, 180, 248, 0.32);
+          background:
+            radial-gradient(circle at center, rgba(138, 180, 248, 0.08), transparent 52%);
+        }
+
+        .badge {
+          padding: 8px 12px;
+          border-radius: 999px;
+          background: rgba(15, 17, 19, 0.82);
+          border: 1px solid rgba(138, 180, 248, 0.24);
+        }
+      </style>
+    </head>
+    <body>
+      <div class="badge">manager:overlay</div>
+    </body>
+  </html>`;
+
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
 function getTargetWebContents(target: TargetLike): WebContents | undefined {
@@ -91,7 +146,7 @@ function getTargetWebContents(target: TargetLike): WebContents | undefined {
     return target.webContents;
   }
 
-  return target;
+  return target as WebContents;
 }
 
 function toRuntimeTargetId(target: TargetLike): RuntimeTargetId | undefined {
@@ -118,8 +173,13 @@ function isDevToolsFrontend(webContents: WebContents) {
   return safeGetUrl(webContents).startsWith('devtools://devtools/');
 }
 
+function isDevToolsRelatedWebContents(webContents: WebContents) {
+  const type = webContents.getType?.() as string | undefined;
+  return type === 'devtools' || isDevToolsFrontend(webContents);
+}
+
 function buildDefaultMeta(webContents: WebContents): TargetMeta {
-  const ownerWindow = webContents.getOwnerBrowserWindow?.();
+  const ownerWindow = BrowserWindow.fromWebContents(webContents);
   const url = safeGetUrl(webContents);
 
   let hostname: string | undefined;
@@ -216,6 +276,52 @@ function buildSnapshot(): ManagerSnapshot {
   };
 }
 
+function buildEmulatedMediaFeatures(theme: PersistedUiState['theme']) {
+  if (theme === 'light' || theme === 'dark') {
+    return [
+      {
+        name: 'prefers-color-scheme',
+        value: theme,
+      },
+    ];
+  }
+
+  return [];
+}
+
+async function applyThemeToDevToolsWebContents(webContents: WebContents) {
+  if (webContents.isDestroyed()) {
+    return;
+  }
+
+  try {
+    if (!webContents.debugger.isAttached()) {
+      webContents.debugger.attach(DEBUGGER_PROTOCOL_VERSION);
+    }
+  } catch {
+    return;
+  }
+
+  try {
+    await webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
+      features: buildEmulatedMediaFeatures(state.persistedUiState.theme),
+    });
+  } catch {
+    // Best-effort only. Some nested DevTools flows can detach the debugger.
+  }
+}
+
+function syncDevToolsThemeForLoadedTabs() {
+  for (const tab of state.tabs.values()) {
+    const webContents = tab.view?.webContents;
+    if (!tab.loaded || !webContents || webContents.isDestroyed()) {
+      continue;
+    }
+
+    void applyThemeToDevToolsWebContents(webContents);
+  }
+}
+
 function broadcastSnapshot() {
   const webContents = state.managerUiView?.webContents;
   if (!webContents || webContents.isDestroyed()) {
@@ -288,6 +394,16 @@ function layoutActiveTabView() {
       height: 0,
     });
   }
+
+  const overlayView = state.managerOverlayView;
+  if (overlayView && !overlayView.webContents.isDestroyed()) {
+    overlayView.setBounds({
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+    });
+  }
 }
 
 function ensureTabView(runtimeId: RuntimeTargetId) {
@@ -298,6 +414,7 @@ function ensureTabView(runtimeId: RuntimeTargetId) {
   }
 
   if (tab.view && !tab.view.webContents.isDestroyed()) {
+    void applyThemeToDevToolsWebContents(tab.view.webContents);
     return tab.view;
   }
 
@@ -307,6 +424,9 @@ function ensureTabView(runtimeId: RuntimeTargetId) {
       nodeIntegration: false,
     },
   });
+  const syncTheme = () => {
+    void applyThemeToDevToolsWebContents(devToolsView.webContents);
+  };
 
   rememberInternalWebContents(devToolsView.webContents.id);
 
@@ -317,8 +437,11 @@ function ensureTabView(runtimeId: RuntimeTargetId) {
   }
 
   state.managerWindow?.contentView.addChildView(devToolsView, 1);
+  devToolsView.webContents.on('did-finish-load', syncTheme);
+  devToolsView.webContents.on('did-navigate-in-page', syncTheme);
   tab.view = devToolsView;
   tab.loaded = true;
+  syncTheme();
 
   return devToolsView;
 }
@@ -331,7 +454,7 @@ function destroyTabView(runtimeId: RuntimeTargetId) {
 
   try {
     tab.view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
-    tab.view.webContents.destroy();
+    tab.view.webContents.close();
   } catch {
     // Best-effort cleanup.
   }
@@ -482,7 +605,7 @@ function focusSource(target: TargetLike) {
   }
 
   const targetRecord = state.targets.get(runtimeId);
-  const ownerWindow = targetRecord?.webContents.getOwnerBrowserWindow?.();
+  const ownerWindow = targetRecord ? BrowserWindow.fromWebContents(targetRecord.webContents) : null;
   try {
     ownerWindow?.show();
     ownerWindow?.focus();
@@ -550,6 +673,11 @@ function registerWebContents(
   };
 
   const syncMetadata = () => {
+    if (autoDetected && isDevToolsRelatedWebContents(webContents)) {
+      unregisterWebContents(webContents.id, false);
+      return;
+    }
+
     targetRecord.firstLoaded = Boolean(safeGetUrl(webContents));
     targetRecord.meta = buildResolvedMeta(webContents, autoDetected, includeSelf, targetRecord.meta);
     broadcastSnapshot();
@@ -621,7 +749,7 @@ function shouldManageWebContents(webContents: WebContents) {
     return false;
   }
 
-  if (webContents.getType?.() === 'devtools' || isDevToolsFrontend(webContents)) {
+  if (isDevToolsRelatedWebContents(webContents)) {
     return false;
   }
 
@@ -647,7 +775,7 @@ function refreshTargets() {
   broadcastSnapshot();
 }
 
-function onWebContentsCreated(_event: Event, webContents: WebContents) {
+function onWebContentsCreated(_event: unknown, webContents: WebContents) {
   if (!shouldManageWebContents(webContents)) {
     return;
   }
@@ -667,30 +795,72 @@ function createManagerWindow() {
   }
 
   const bounds = state.persistedUiState.windowBounds;
-  const managerWindow = new BaseWindow({
+  const managerWindowOptions = {
     width: bounds?.width ?? 1280,
     height: bounds?.height ?? 820,
-    x: bounds?.x,
-    y: bounds?.y,
     title: 'Multiview DevTools',
     show: true,
     autoHideMenuBar: true,
     backgroundColor: '#0d1117',
-  });
+  };
+
+  const managerWindow = new BaseWindow(
+    bounds?.x != null && bounds?.y != null
+      ? {
+          ...managerWindowOptions,
+          x: bounds.x,
+          y: bounds.y,
+        }
+      : managerWindowOptions,
+  );
 
   const managerUiView = new WebContentsView({
     webPreferences: {
+      sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
       preload: getPreloadPath(),
     },
   });
+  const managerOverlayView = new WebContentsView({
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
 
   state.managerWindow = managerWindow;
   state.managerUiView = managerUiView;
+  state.managerOverlayView = managerOverlayView;
   rememberInternalWebContents(managerUiView.webContents.id);
+  rememberInternalWebContents(managerOverlayView.webContents.id);
 
   managerWindow.contentView.addChildView(managerUiView, 0);
+  for (const tab of state.tabs.values()) {
+    if (tab.view && !tab.view.webContents.isDestroyed()) {
+      managerWindow.contentView.addChildView(tab.view, 1);
+    }
+  }
+  managerWindow.contentView.addChildView(managerOverlayView, 2);
+
+  if (state.options.includeSelf) {
+    registerWebContents(
+      managerUiView,
+      {
+        title: 'manager:toolbar',
+        type: 'manager-ui',
+      },
+      false,
+    );
+    registerWebContents(
+      managerOverlayView,
+      {
+        title: 'manager:overlay',
+        type: 'manager-overlay',
+      },
+      false,
+    );
+  }
 
   const relayout = () => {
     const { width, height } = managerWindow.getContentBounds();
@@ -704,6 +874,7 @@ function createManagerWindow() {
   managerWindow.on('closed', () => {
     state.managerWindow = null;
     state.managerUiView = null;
+    state.managerOverlayView = null;
   });
 
   managerUiView.webContents.on('did-finish-load', () => {
@@ -712,6 +883,7 @@ function createManagerWindow() {
   });
 
   void managerUiView.webContents.loadFile(getRendererEntryPath());
+  void managerOverlayView.webContents.loadURL(buildOverlayDataUrl());
   relayout();
   return managerWindow;
 }
@@ -725,25 +897,32 @@ function wireIpc() {
 
   ipcMain.handle(IPC_CHANNELS.getSnapshot, () => buildSnapshot());
   ipcMain.handle(IPC_CHANNELS.refreshTargets, () => refreshTargets());
-  ipcMain.handle(IPC_CHANNELS.openTab, (_event, runtimeId: number) => openTab(runtimeId));
-  ipcMain.handle(IPC_CHANNELS.activateTab, (_event, runtimeId: number) => activateTab(runtimeId));
-  ipcMain.handle(IPC_CHANNELS.unloadTab, (_event, runtimeId: number) => unloadTab(runtimeId));
-  ipcMain.handle(IPC_CHANNELS.closeTab, (_event, runtimeId: number) => closeTab(runtimeId));
-  ipcMain.handle(IPC_CHANNELS.closeTabsLeftOf, (_event, runtimeId: number) =>
+  ipcMain.handle(IPC_CHANNELS.openTab, (_event: unknown, runtimeId: number) => openTab(runtimeId));
+  ipcMain.handle(IPC_CHANNELS.activateTab, (_event: unknown, runtimeId: number) =>
+    activateTab(runtimeId),
+  );
+  ipcMain.handle(IPC_CHANNELS.unloadTab, (_event: unknown, runtimeId: number) =>
+    unloadTab(runtimeId),
+  );
+  ipcMain.handle(IPC_CHANNELS.closeTab, (_event: unknown, runtimeId: number) => closeTab(runtimeId));
+  ipcMain.handle(IPC_CHANNELS.closeTabsLeftOf, (_event: unknown, runtimeId: number) =>
     closeTabsLeftOf(runtimeId),
   );
-  ipcMain.handle(IPC_CHANNELS.closeTabsRightOf, (_event, runtimeId: number) =>
+  ipcMain.handle(IPC_CHANNELS.closeTabsRightOf, (_event: unknown, runtimeId: number) =>
     closeTabsRightOf(runtimeId),
   );
-  ipcMain.handle(IPC_CHANNELS.closeOtherTabs, (_event, runtimeId: number) =>
+  ipcMain.handle(IPC_CHANNELS.closeOtherTabs, (_event: unknown, runtimeId: number) =>
     closeOtherTabs(runtimeId),
   );
-  ipcMain.handle(IPC_CHANNELS.focusSource, (_event, runtimeId: number) => focusSource(runtimeId));
-  ipcMain.handle(IPC_CHANNELS.setTheme, (_event, theme: PersistedUiState['theme']) => {
+  ipcMain.handle(IPC_CHANNELS.focusSource, (_event: unknown, runtimeId: number) =>
+    focusSource(runtimeId),
+  );
+  ipcMain.handle(IPC_CHANNELS.setTheme, (_event: unknown, theme: PersistedUiState['theme']) => {
     state.persistedUiState = {
       ...state.persistedUiState,
       theme,
     };
+    syncDevToolsThemeForLoadedTabs();
     schedulePersistenceSave();
     broadcastSnapshot();
   });
@@ -802,7 +981,11 @@ export function initDevToolsManager(options: InitDevToolsManagerOptions = {}): D
 
     if (options.autoDetect !== false && !state.autodetectBound) {
       state.autodetectBound = true;
-      app.on('web-contents-created', onWebContentsCreated);
+      (
+        app as unknown as {
+          on(event: 'web-contents-created', listener: typeof onWebContentsCreated): void;
+        }
+      ).on('web-contents-created', onWebContentsCreated);
       refreshTargets();
     }
 
