@@ -44,6 +44,18 @@ const filteredTargets = computed(() => {
   return sortedTargets.value.filter((target) => buildSearchText(target).includes(query));
 });
 
+function targetTrail(target: ManagerTargetInfo) {
+  const parts = [`#${target.runtimeId}`];
+  if (target.autoDetected) {
+    parts.push('auto');
+  }
+  if (openTabIds.value.has(target.runtimeId)) {
+    parts.push(props.menu.activeTabId === target.runtimeId ? 'active' : 'open');
+  }
+
+  return parts.join(' · ');
+}
+
 function panelStyle() {
   return {
     left: `${props.menu.position.x}px`,
@@ -104,23 +116,8 @@ onMounted(() => {
             {{ target.meta.title?.trim() || `wc:${target.runtimeId}` }}
           </div>
 
-          <div class="overlay-pill-row">
-            <span class="overlay-pill">#{{ target.runtimeId }}</span>
-            <span
-              v-if="target.autoDetected"
-              class="overlay-pill"
-            >
-              auto
-            </span>
-            <span
-              v-if="openTabIds.has(target.runtimeId)"
-              :class="[
-                'overlay-pill',
-                props.menu.activeTabId === target.runtimeId && 'overlay-pill--accent',
-              ]"
-            >
-              {{ props.menu.activeTabId === target.runtimeId ? 'active' : 'open' }}
-            </span>
+          <div class="overlay-target__trail">
+            {{ targetTrail(target) }}
           </div>
         </div>
 

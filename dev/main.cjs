@@ -16,76 +16,99 @@ function buildDemoHtml(label, hue) {
       <style>
         :root {
           color-scheme: dark;
-          font-family: "Segoe UI", system-ui, sans-serif;
+          font-family: system-ui, sans-serif;
         }
 
         body {
           margin: 0;
           min-height: 100vh;
-          display: grid;
-          place-items: center;
-          color: white;
-          background:
-            radial-gradient(circle at top left, hsla(${hue}, 90%, 62%, 0.42), transparent 36%),
-            linear-gradient(135deg, hsl(${hue}, 40%, 16%), hsl(${hue + 24}, 55%, 9%));
+          padding: 16px;
+          color: #f3f4f6;
+          background: #141618;
         }
 
         .card {
-          width: min(560px, calc(100vw - 40px));
-          padding: 28px;
-          border-radius: 24px;
-          background: rgba(9, 12, 20, 0.54);
-          border: 1px solid rgba(255, 255, 255, 0.18);
-          box-shadow: 0 22px 64px rgba(0, 0, 0, 0.28);
-          backdrop-filter: blur(18px);
+          min-height: calc(100vh - 32px);
+          padding: 16px;
+          border-radius: 4px;
+          background: #1d2024;
+          border: 1px solid #30343a;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
         }
 
-        h1 {
+        header {
+          padding-bottom: 12px;
+          border-bottom: 1px solid #30343a;
+        }
+
+        h2 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 600;
+        }
+
+        .meta {
+          margin-top: 4px;
+          color: #b3b8be;
+          font-size: 12px;
+        }
+
+        .section {
+          margin-top: 16px;
+        }
+
+        .section-title {
           margin: 0 0 8px;
-          font-size: 36px;
+          font-size: 13px;
+          font-weight: 600;
         }
 
         p {
-          margin: 0 0 18px;
-          color: rgba(255, 255, 255, 0.78);
-          line-height: 1.55;
+          margin: 0 0 10px;
+          color: #d7dade;
+          line-height: 1.5;
         }
 
-        .pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 10px;
-          padding: 10px 14px;
-          border-radius: 999px;
-          background: rgba(255, 255, 255, 0.1);
-          font-size: 13px;
+        .facts {
+          margin: 0;
+          padding: 0;
+          list-style: none;
+          border: 1px solid #30343a;
+          background: #181b1e;
         }
 
-        .dot {
-          width: 10px;
-          height: 10px;
-          border-radius: 999px;
-          background: hsl(${hue}, 100%, 70%);
+        .facts li {
+          padding: 10px 12px;
+        }
+
+        .facts li + li {
+          border-top: 1px solid #30343a;
+        }
+
+        .facts strong {
+          display: inline-block;
+          min-width: 84px;
+          color: #b3b8be;
+          font-weight: 500;
         }
       </style>
     </head>
     <body>
       <main class="card">
-        <div class="pill"><span class="dot"></span> WebContentsView demo target</div>
-        <h1>${label}</h1>
-        <p>This renderer lives in a dedicated WebContentsView so the package can discover and attach DevTools to it independently.</p>
-        <p id="clock"></p>
+        <header>
+          <h2>${label}</h2>
+          <div class="meta">Dedicated WebContentsView target</div>
+        </header>
+
+        <section class="section">
+          <p>This renderer exists so the manager can discover it, register it, and attach a separate DevTools frontend.</p>
+          <ul class="facts">
+            <li><strong>Role</strong> demo target</li>
+            <li><strong>Surface</strong> left/right sandbox panel</li>
+            <li><strong>Status</strong> active renderer</li>
+          </ul>
+        </section>
       </main>
-      <script>
-        const clock = document.getElementById('clock');
-        function tick() {
-          const now = new Date();
-          clock.textContent = 'Updated at ' + now.toLocaleTimeString();
-          document.title = '${label} · ' + now.toLocaleTimeString();
-        }
-        tick();
-        setInterval(tick, 1000);
-      </script>
     </body>
   </html>`;
 }

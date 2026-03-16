@@ -32,11 +32,17 @@ const title = computed(() => props.menu.tab.meta.title?.trim() || `wc:${props.me
       <div class="overlay-card__hint">#{{ props.menu.runtimeId }}</div>
     </header>
 
-    <div class="overlay-card__subhead">
-      {{ props.menu.tab.loaded ? 'Loaded DevTools frontend' : 'Unloaded tab kept in workspace' }}
-    </div>
-
     <div class="overlay-menu">
+      <button
+        class="overlay-menu__item"
+        type="button"
+        @click="emit('action', 'focus-source', props.menu.runtimeId)"
+      >
+        <div class="overlay-menu__label">Focus Source Target</div>
+      </button>
+
+      <div class="overlay-menu__separator" />
+
       <button
         class="overlay-menu__item"
         type="button"
@@ -44,16 +50,14 @@ const title = computed(() => props.menu.tab.meta.title?.trim() || `wc:${props.me
         @click="emit('action', 'unload', props.menu.runtimeId)"
       >
         <div class="overlay-menu__label">Unload tab</div>
-        <div class="overlay-menu__detail">Keep the tab, free the DevTools frontend resources.</div>
       </button>
 
       <button
-        class="overlay-menu__item overlay-menu__item--danger"
+        class="overlay-menu__item"
         type="button"
         @click="emit('action', 'close', props.menu.runtimeId)"
       >
         <div class="overlay-menu__label">Close tab</div>
-        <div class="overlay-menu__detail">Remove this tab from the workspace.</div>
       </button>
 
       <button
@@ -63,7 +67,6 @@ const title = computed(() => props.menu.tab.meta.title?.trim() || `wc:${props.me
         @click="emit('action', 'close-left', props.menu.runtimeId)"
       >
         <div class="overlay-menu__label">Close left</div>
-        <div class="overlay-menu__detail">Close every tab to the left, loaded or unloaded.</div>
       </button>
 
       <button
@@ -73,7 +76,6 @@ const title = computed(() => props.menu.tab.meta.title?.trim() || `wc:${props.me
         @click="emit('action', 'close-right', props.menu.runtimeId)"
       >
         <div class="overlay-menu__label">Close right</div>
-        <div class="overlay-menu__detail">Close every tab to the right, loaded or unloaded.</div>
       </button>
 
       <button
@@ -83,18 +85,6 @@ const title = computed(() => props.menu.tab.meta.title?.trim() || `wc:${props.me
         @click="emit('action', 'close-others', props.menu.runtimeId)"
       >
         <div class="overlay-menu__label">Close others</div>
-        <div class="overlay-menu__detail">Keep this tab and remove the rest of the workspace.</div>
-      </button>
-
-      <button
-        class="overlay-menu__item"
-        type="button"
-        @click="emit('action', 'focus-source', props.menu.runtimeId)"
-      >
-        <div class="overlay-menu__label">Focus source target</div>
-        <div class="overlay-menu__detail">
-          Focus the owner window first, then the source webContents when possible.
-        </div>
       </button>
     </div>
   </section>

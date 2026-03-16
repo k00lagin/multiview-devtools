@@ -12,23 +12,20 @@ const emit = defineEmits<{
   selectTheme: [theme: ThemeMode];
 }>();
 
-const options: Array<{ value: ThemeMode; label: string; detail: string; iconHref: string }> = [
+const options: Array<{ value: ThemeMode; label: string; iconHref: string }> = [
   {
     value: 'system',
     label: 'System',
-    detail: 'Follow the OS preference for DevTools and manager UI.',
     iconHref: '#icon-theme-system',
   },
   {
     value: 'light',
     label: 'Light',
-    detail: 'Force a light DevTools theme across loaded tabs.',
     iconHref: '#icon-light-mode',
   },
   {
     value: 'dark',
     label: 'Dark',
-    detail: 'Force a dark DevTools theme across loaded tabs.',
     iconHref: '#icon-dark-mode',
   },
 ];
@@ -69,9 +66,6 @@ const panelStyle = computed(() => ({
               <use :href="option.iconHref" />
             </svg>
           </span>
-        </div>
-        <div class="overlay-menu__detail">
-          {{ option.detail }}
         </div>
       </button>
     </div>

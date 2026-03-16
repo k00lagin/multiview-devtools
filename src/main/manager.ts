@@ -469,16 +469,18 @@ function rememberInternalWebContents(id: number) {
   }
 }
 
-function closeOverlay() {
+function closeOverlay(options: { restoreFocus?: boolean } = {}) {
   state.overlayRequest = null;
   state.overlayState = CLOSED_OVERLAY_STATE;
   broadcastOverlayState();
   layoutActiveTabView();
 
-  try {
-    state.managerUiView?.webContents.focus();
-  } catch {
-    // Best-effort focus restore.
+  if (options.restoreFocus !== false) {
+    try {
+      state.managerUiView?.webContents.focus();
+    } catch {
+      // Best-effort focus restore.
+    }
   }
 }
 
@@ -1055,7 +1057,7 @@ function createManagerWindow() {
   managerWindow.on('resize', relayout);
   managerWindow.on('move', syncWindowBoundsIntoState);
   managerWindow.on('resize', syncWindowBoundsIntoState);
-  managerWindow.on('blur', closeOverlay);
+  managerWindow.on('blur', () => closeOverlay({ restoreFocus: false }));
   managerWindow.on('closed', () => {
     state.managerWindow = null;
     state.managerUiView = null;
