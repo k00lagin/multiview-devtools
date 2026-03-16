@@ -38,11 +38,7 @@ const panelStyle = computed(() => ({
 </script>
 
 <template>
-  <section
-    class="overlay-card"
-    :style="panelStyle"
-    @mousedown.stop
-  >
+  <section class="overlay-card" :style="panelStyle" @mousedown.stop>
     <header class="overlay-card__header">
       <div class="overlay-card__title">Theme</div>
       <div class="overlay-card__hint">{{ props.menu.selectedTheme }}</div>

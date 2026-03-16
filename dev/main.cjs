@@ -153,8 +153,12 @@ async function createDevSandbox() {
   window.on('resize', () => layoutViews(window, leftView, rightView));
 
   await Promise.all([
-    leftView.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildDemoHtml('Left Panel', 188))}`),
-    rightView.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildDemoHtml('Right Panel', 24))}`),
+    leftView.webContents.loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(buildDemoHtml('Left Panel', 188))}`,
+    ),
+    rightView.webContents.loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(buildDemoHtml('Right Panel', 24))}`,
+    ),
   ]);
 
   const manager = initDevToolsManager({
@@ -175,9 +179,7 @@ async function createDevSandbox() {
   });
 
   const targetIdsByTitle = new Map(
-    manager
-      .listTargets()
-      .map((target) => [String(target.meta.title), target.runtimeId]),
+    manager.listTargets().map((target) => [String(target.meta.title), target.runtimeId]),
   );
 
   const orderedTargets = [

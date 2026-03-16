@@ -10,13 +10,7 @@ import TargetPickerButton from './components/TargetPickerButton.vue';
 import ThemePickerButton from './components/ThemePickerButton.vue';
 import { useManagerState } from './composables/useManagerState';
 
-const {
-  snapshot,
-  refreshTargets,
-  activateTab,
-  closeTab,
-  focusSource,
-} = useManagerState();
+const { snapshot, refreshTargets, activateTab, closeTab, focusSource } = useManagerState();
 
 const selectedTheme = computed<ThemeMode>(() => snapshot.value.uiState.theme ?? 'system');
 const visibleOrder = ref<number[]>([]);
@@ -162,10 +156,7 @@ watch(
 
       <TargetPickerButton @trigger="openTargetPicker" />
 
-      <ThemePickerButton
-        :theme="selectedTheme"
-        @trigger="openThemePicker"
-      />
+      <ThemePickerButton :theme="selectedTheme" @trigger="openThemePicker" />
 
       <button
         class="btn btn--icon"
@@ -181,10 +172,7 @@ watch(
     </header>
 
     <main>
-      <ManagerEmptyState
-        v-if="!orderedTabs.length"
-        :has-targets="snapshot.targets.length > 0"
-      />
+      <ManagerEmptyState v-if="!orderedTabs.length" :has-targets="snapshot.targets.length > 0" />
     </main>
   </div>
 </template>

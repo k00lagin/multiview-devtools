@@ -692,7 +692,10 @@ function unloadTab(target: TargetLike) {
   layoutActiveTabView();
 }
 
-function closeTabsByIds(runtimeIds: RuntimeTargetId[], fallbackActiveId: RuntimeTargetId | null = null) {
+function closeTabsByIds(
+  runtimeIds: RuntimeTargetId[],
+  fallbackActiveId: RuntimeTargetId | null = null,
+) {
   const idsToClose = runtimeIds.filter((runtimeId) => state.tabs.has(runtimeId));
   if (!idsToClose.length) {
     return;
@@ -860,7 +863,12 @@ function registerWebContents(
     }
 
     targetRecord.firstLoaded = Boolean(safeGetUrl(webContents));
-    targetRecord.meta = buildResolvedMeta(webContents, autoDetected, includeSelf, targetRecord.meta);
+    targetRecord.meta = buildResolvedMeta(
+      webContents,
+      autoDetected,
+      includeSelf,
+      targetRecord.meta,
+    );
     broadcastSnapshot();
 
     if (targetRecord.pendingOpen && state.activeTabId === webContents.id) {
@@ -1101,7 +1109,9 @@ function wireIpc() {
   ipcMain.handle(IPC_CHANNELS.unloadTab, (_event: unknown, runtimeId: number) =>
     unloadTab(runtimeId),
   );
-  ipcMain.handle(IPC_CHANNELS.closeTab, (_event: unknown, runtimeId: number) => closeTab(runtimeId));
+  ipcMain.handle(IPC_CHANNELS.closeTab, (_event: unknown, runtimeId: number) =>
+    closeTab(runtimeId),
+  );
   ipcMain.handle(IPC_CHANNELS.closeTabsLeftOf, (_event: unknown, runtimeId: number) =>
     closeTabsLeftOf(runtimeId),
   );

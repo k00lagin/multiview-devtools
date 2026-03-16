@@ -14,11 +14,11 @@ Layer order:
 
 Key rules:
 
-* The source of truth for targets, tabs, active tab, and overlay state lives in the main process.
-* The manager UI and overlay renderers are presentation layers only and communicate with main through internal IPC.
-* The overlay is a single reusable view, not one view per popup/menu.
-* The overlay is hidden by setting its bounds to `0x0` and shown by stretching it to the full manager window.
-* UI renderers send trigger intent and geometry; main decides which overlay to open and where to place it.
+- The source of truth for targets, tabs, active tab, and overlay state lives in the main process.
+- The manager UI and overlay renderers are presentation layers only and communicate with main through internal IPC.
+- The overlay is a single reusable view, not one view per popup/menu.
+- The overlay is hidden by setting its bounds to `0x0` and shown by stretching it to the full manager window.
+- UI renderers send trigger intent and geometry; main decides which overlay to open and where to place it.
 
 This follows the proven `WebContentsView` layering strategy from [WEB_CONTENTS_VIEW_STRATEGY.md](/C:/Git/_probe/multiview-devtools/WEB_CONTENTS_VIEW_STRATEGY.md).
 
@@ -28,17 +28,17 @@ v1 works only with `WebContentsView` targets.
 
 Out of scope for autodetect:
 
-* `BrowserWindow`
-* `BrowserView`
-* renderer `<webview>`
-* Electron DevTools contents not created by this package
+- `BrowserWindow`
+- `BrowserView`
+- renderer `<webview>`
+- Electron DevTools contents not created by this package
 
 Additional rules:
 
-* Hidden/offscreen status is ignored. A `WebContentsView` is treated like any other target.
-* Self-debug is opt-in and applies only to manager UI views owned by this package.
-* Internal DevTools-hosting views created by this package must never become recursive targets for deeper DevTools attachment.
-* External DevTools-related contents are skipped by autodetect, but explicit manual registration is allowed for advanced cases such as DevTools extension development.
+- Hidden/offscreen status is ignored. A `WebContentsView` is treated like any other target.
+- Self-debug is opt-in and applies only to manager UI views owned by this package.
+- Internal DevTools-hosting views created by this package must never become recursive targets for deeper DevTools attachment.
+- External DevTools-related contents are skipped by autodetect, but explicit manual registration is allowed for advanced cases such as DevTools extension development.
 
 ## 3. Public API Direction
 
@@ -49,16 +49,13 @@ Consumer-facing renderer APIs are out of scope for v1. Any IPC used by the manag
 Draft TypeScript shape:
 
 ```ts
-import type { WebContents, WebContentsView, Rectangle } from "electron";
+import type { WebContents, WebContentsView, Rectangle } from 'electron';
 
 type RuntimeTargetId = number; // webContents.id in v1
 
 type PersistentTargetId = string;
 
-type TargetLike =
-  | WebContents
-  | WebContentsView
-  | RuntimeTargetId;
+type TargetLike = WebContents | WebContentsView | RuntimeTargetId;
 
 interface TargetMeta {
   title?: string;
@@ -80,7 +77,7 @@ interface TargetContext {
 }
 
 interface PersistedUiState {
-  theme?: "system" | "light" | "dark";
+  theme?: 'system' | 'light' | 'dark';
   windowBounds?: Rectangle;
 }
 
@@ -122,7 +119,10 @@ interface DevToolsManager {
   listTargets(): ManagerTargetInfo[];
   listTabs(): ManagerTabInfo[];
 
-  registerWebContents(target: WebContents | WebContentsView, meta?: Partial<TargetMeta>): RuntimeTargetId | undefined;
+  registerWebContents(
+    target: WebContents | WebContentsView,
+    meta?: Partial<TargetMeta>,
+  ): RuntimeTargetId | undefined;
   unregisterWebContents(target: TargetLike): void;
 
   openTab(target: TargetLike): void;
@@ -138,17 +138,15 @@ interface DevToolsManager {
   setMeta(target: TargetLike, meta: Partial<TargetMeta>): void;
 }
 
-declare function initDevToolsManager(
-  options?: InitDevToolsManagerOptions
-): DevToolsManager;
+declare function initDevToolsManager(options?: InitDevToolsManagerOptions): DevToolsManager;
 ```
 
 Behavioral notes:
 
-* Manual `registerWebContents(...)` is an explicit override and is not re-filtered by autodetect rules.
-* Manual `unregisterWebContents(...)` suppresses rediscovery for the current runtime unless the target is explicitly re-registered.
-* One target may have at most one workspace tab.
-* Re-opening an existing tab activates it and loads it if currently unloaded.
+- Manual `registerWebContents(...)` is an explicit override and is not re-filtered by autodetect rules.
+- Manual `unregisterWebContents(...)` suppresses rediscovery for the current runtime unless the target is explicitly re-registered.
+- One target may have at most one workspace tab.
+- Re-opening an existing tab activates it and loads it if currently unloaded.
 
 ## 4. State Model
 
@@ -195,11 +193,11 @@ unloaded
 
 Operational rules:
 
-* `Unload` keeps the tab in the workspace but destroys its DevTools frontend/view.
-* `Close` removes the tab from the workspace and unloads any live frontend.
-* `Close Left`, `Close Right`, and `Close Others` apply to both loaded and unloaded tabs.
-* If a batch close removes the currently active tab, activation moves to the tab on which the context menu was invoked.
-* If an active tab is unloaded, it remains the selected tab in unloaded state until another tab is activated or it is reopened.
+- `Unload` keeps the tab in the workspace but destroys its DevTools frontend/view.
+- `Close` removes the tab from the workspace and unloads any live frontend.
+- `Close Left`, `Close Right`, and `Close Others` apply to both loaded and unloaded tabs.
+- If a batch close removes the currently active tab, activation moves to the tab on which the context menu was invoked.
+- If an active tab is unloaded, it remains the selected tab in unloaded state until another tab is activated or it is reopened.
 
 ## 5. Persistence
 
@@ -207,36 +205,36 @@ Default persistence in v1 is intentionally small.
 
 Persisted by default:
 
-* theme
-* manager window bounds and position
+- theme
+- manager window bounds and position
 
 Not persisted in v1:
 
-* open tabs
-* tab order
-* active tab
-* DevTools session/workspace state
+- open tabs
+- tab order
+- active tab
+- DevTools session/workspace state
 
 Default storage strategy:
 
-* Store a JSON file named after the package in the current Electron profile directory.
-* Recommended default location: `app.getPath("userData")/<package-name>.json`
+- Store a JSON file named after the package in the current Electron profile directory.
+- Recommended default location: `app.getPath("userData")/<package-name>.json`
 
 Custom persistence:
 
-* `initDevToolsManager(...)` accepts a custom persistence adapter via callbacks.
-* If a custom adapter is provided, it replaces the default JSON-file behavior.
+- `initDevToolsManager(...)` accepts a custom persistence adapter via callbacks.
+- If a custom adapter is provided, it replaces the default JSON-file behavior.
 
 ## 6. Immediate Implementation Boundaries
 
 These boundaries are fixed for v1:
 
-* No built-in telemetry.
-* No onboarding UI inside the package runtime.
-* No global shortcuts shipped by default.
-* No recursive self-debug of package-owned DevTools-hosting views.
-* No workspace restore across app restarts.
-* No pinning.
+- No built-in telemetry.
+- No onboarding UI inside the package runtime.
+- No global shortcuts shipped by default.
+- No recursive self-debug of package-owned DevTools-hosting views.
+- No workspace restore across app restarts.
+- No pinning.
 
 ## 7. Near-Term Follow-Ups
 

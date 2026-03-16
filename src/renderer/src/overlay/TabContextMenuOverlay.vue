@@ -22,11 +22,7 @@ const title = computed(() => props.menu.tab.meta.title?.trim() || `wc:${props.me
 </script>
 
 <template>
-  <section
-    class="overlay-card"
-    :style="panelStyle"
-    @mousedown.stop
-  >
+  <section class="overlay-card" :style="panelStyle" @mousedown.stop>
     <header class="overlay-card__header">
       <div class="overlay-card__title">{{ title }}</div>
       <div class="overlay-card__hint">#{{ props.menu.runtimeId }}</div>

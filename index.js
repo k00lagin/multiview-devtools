@@ -1,7 +1,13 @@
 'use strict';
 
 const path = require('path');
-const { app, BaseWindow, WebContentsView, ipcMain, webContents: webContentsModule } = require('electron');
+const {
+  app,
+  BaseWindow,
+  WebContentsView,
+  ipcMain,
+  webContents: webContentsModule,
+} = require('electron');
 
 // Internal state
 const state = {
@@ -20,7 +26,7 @@ function getDisplayTitle(wc, meta = {}) {
   if (meta && meta.title) return String(meta.title);
   try {
     if (wc && wc.getTitle) return wc.getTitle();
-  } catch { }
+  } catch {}
   return `wc:${wc.id}`;
 }
 
@@ -34,7 +40,7 @@ function notifyActive() {
 }
 
 function broadcastList() {
-  const list = Array.from(state.managed.values()).map(e => ({
+  const list = Array.from(state.managed.values()).map((e) => ({
     id: e.wc.id,
     title: e.title,
     meta: e.meta || {},
@@ -46,7 +52,11 @@ function broadcastList() {
 }
 
 function safeGetURL(wc) {
-  try { return wc.getURL ? wc.getURL() : ''; } catch { return ''; }
+  try {
+    return wc.getURL ? wc.getURL() : '';
+  } catch {
+    return '';
+  }
 }
 
 function isDevtoolsFrontend(wc) {
@@ -57,7 +67,7 @@ function onWebContentsCreated(_event, wc) {
   // Ignore DevTools and internal
   try {
     if (wc.getType && wc.getType() === 'devtools') return;
-  } catch { }
+  } catch {}
   if (isDevtoolsFrontend(wc)) return;
   registerWebContents(wc);
   wc.once('destroyed', () => {
@@ -76,7 +86,7 @@ function ensureAutodetect() {
       if (isDevtoolsFrontend(wc)) continue;
       if (!state.managed.has(wc.id)) registerWebContents(wc);
     }
-  } catch { }
+  } catch {}
 }
 
 function createManagerWindow() {
@@ -90,7 +100,11 @@ function createManagerWindow() {
     autoHideMenuBar: true,
   });
   state.managerWindow = win;
-  win.on('closed', () => { state.managerWindow = null; state.uiView = null; state.devViews.clear(); });
+  win.on('closed', () => {
+    state.managerWindow = null;
+    state.uiView = null;
+    state.devViews.clear();
+  });
 
   // UI view occupies full window; draws tabs (26px) and empty state.
   const uiView = new WebContentsView({
@@ -114,10 +128,13 @@ function createManagerWindow() {
   win.on('resize', layoutAll);
   win.on('show', layoutAll);
   uiView.webContents.on('did-finish-load', () => layoutAll());
-  uiView.webContents.loadFile(path.join(__dirname, 'ui', 'manager.html')).catch(() => { });
+  uiView.webContents.loadFile(path.join(__dirname, 'ui', 'manager.html')).catch(() => {});
 
   // Show the window explicitly (BaseWindow may not emit ready-to-show)
-  try { win.show(); win.focus(); } catch { }
+  try {
+    win.show();
+    win.focus();
+  } catch {}
   return win;
 }
 
@@ -132,7 +149,9 @@ function ensureDevtoolsViewFor(id) {
     },
   });
   // Attach devtools frontend to this WebContents
-  try { entry.wc.setDevToolsWebContents(devView.webContents); } catch { }
+  try {
+    entry.wc.setDevToolsWebContents(devView.webContents);
+  } catch {}
   // Add view above UI (index 1)
   if (state.managerWindow && !state.managerWindow.isDestroyed()) {
     // NOTE: Child views MUST be added to the window's contentView
@@ -149,7 +168,7 @@ function destroyDevtoolsFor(id) {
     // Hide first
     view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
     view.webContents.destroy();
-  } catch { }
+  } catch {}
   state.devViews.delete(id);
   if (state.activeId === id) {
     // If active was destroyed, choose next active (if any) but do not auto-open
@@ -187,7 +206,9 @@ function openExclusiveDevTools(targetId) {
   // Ensure devtools view for the active target
   const devView = ensureDevtoolsViewFor(targetId);
   if (entry && entry.wc && !entry.wc.isDestroyed()) {
-    try { entry.wc.openDevTools({ mode: 'detach' }); } catch { }
+    try {
+      entry.wc.openDevTools({ mode: 'detach' });
+    } catch {}
   }
   // Do not close other DevTools; hide via layout only
   layoutActiveDevtools();
@@ -215,7 +236,10 @@ function wireIPC() {
     if (entry && entry.wc && !entry.wc.isDestroyed()) {
       try {
         const bw = entry.wc.getOwnerBrowserWindow?.();
-        try { bw?.show(); bw?.focus(); } catch {}
+        try {
+          bw?.show();
+          bw?.focus();
+        } catch {}
         entry.wc.focus?.();
       } catch {}
     }
@@ -249,17 +273,43 @@ function buildAPI() {
   return {
     registerWebContents,
     unregisterWebContents,
-    list: () => Array.from(state.managed.values()).map(e => ({ id: e.wc.id, title: e.title, meta: e.meta })),
-    show: () => { const w = createManagerWindow(); w.show(); w.focus(); },
-    hide: () => { if (state.managerWindow && !state.managerWindow.isDestroyed()) state.managerWindow.hide(); },
-    toggle: () => { const w = createManagerWindow(); if (w.isVisible()) w.hide(); else { w.show(); w.focus(); } },
+    list: () =>
+      Array.from(state.managed.values()).map((e) => ({
+        id: e.wc.id,
+        title: e.title,
+        meta: e.meta,
+      })),
+    show: () => {
+      const w = createManagerWindow();
+      w.show();
+      w.focus();
+    },
+    hide: () => {
+      if (state.managerWindow && !state.managerWindow.isDestroyed()) state.managerWindow.hide();
+    },
+    toggle: () => {
+      const w = createManagerWindow();
+      if (w.isVisible()) w.hide();
+      else {
+        w.show();
+        w.focus();
+      }
+    },
     openDevToolsFor: (id) => openExclusiveDevTools(Number(id)),
     destroyDevtoolsFor: (id) => destroyDevtoolsFor(Number(id)),
-    activate: (id) => { state.activeId = Number(id); openExclusiveDevTools(state.activeId); notifyActive(); },
+    activate: (id) => {
+      state.activeId = Number(id);
+      openExclusiveDevTools(state.activeId);
+      notifyActive();
+    },
     layout: () => layoutActiveDevtools(),
     setMeta: (id, meta) => {
       const entry = state.managed.get(Number(id));
-      if (entry) { entry.meta = meta || {}; entry.title = getDisplayTitle(entry.wc, entry.meta); broadcastList(); }
+      if (entry) {
+        entry.meta = meta || {};
+        entry.title = getDisplayTitle(entry.wc, entry.meta);
+        broadcastList();
+      }
     },
   };
 }
@@ -278,7 +328,10 @@ function registerWebContents(wc, meta = {}) {
 
   // Keep title and URL in sync; trigger deferred devtools open on first navigate
   const onDidNavigate = (_event, url) => {
-    if (isDevtoolsFrontend(wc)) { unregisterWebContents(wc); return; }
+    if (isDevtoolsFrontend(wc)) {
+      unregisterWebContents(wc);
+      return;
+    }
     entry.firstLoaded = true;
     entry.meta = { ...(entry.meta || {}), url: safeGetURL(wc) };
     entry.title = getDisplayTitle(wc, entry.meta);
@@ -289,13 +342,15 @@ function registerWebContents(wc, meta = {}) {
     }
   };
   const onTitleUpdated = () => {
-    try { entry.title = getDisplayTitle(wc, entry.meta); } catch { }
+    try {
+      entry.title = getDisplayTitle(wc, entry.meta);
+    } catch {}
     broadcastList();
   };
   try {
     wc.on('did-navigate', onDidNavigate);
     wc.on('page-title-updated', onTitleUpdated);
-  } catch { }
+  } catch {}
 
   // if nothing active, pick first registered
   if (state.activeId == null) state.activeId = wc.id;
@@ -317,7 +372,7 @@ function unregisterWebContents(wc) {
           dv.setBounds({ x: 0, y: 0, width: 0, height: 0 });
         }
         dv.webContents.destroy();
-      } catch { }
+      } catch {}
       state.devViews.delete(id);
     }
     if (state.activeId === id) {
@@ -336,4 +391,3 @@ module.exports = {
   unregisterWebContents,
   _state: state,
 };
-

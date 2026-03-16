@@ -16,7 +16,5 @@
     "src/preload/**/*.ts",
     "src/shared/**/*.ts"
   ],
-  "exclude": [
-    "src/renderer/**"
-  ]
+  "exclude": ["src/renderer/**"]
 }
