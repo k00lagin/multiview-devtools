@@ -3,6 +3,7 @@ import type { Rectangle, WebContents, WebContentsView } from 'electron';
 export type RuntimeTargetId = number;
 export type PersistentTargetId = string;
 export type ThemeMode = 'system' | 'light' | 'dark';
+export type OverlayMenuKind = 'target-picker' | 'theme-picker' | 'tab-context-menu';
 
 export type TargetLike = WebContents | WebContentsView | RuntimeTargetId;
 
@@ -63,6 +64,60 @@ export interface ManagerSnapshot {
   tabs: ManagerTabInfo[];
   activeTabId: RuntimeTargetId | null;
   uiState: PersistedUiState;
+}
+
+export interface OverlayPoint {
+  x: number;
+  y: number;
+}
+
+export interface OverlayPosition extends OverlayPoint {
+  align?: 'start' | 'end';
+}
+
+export interface OverlayTriggerRequest {
+  kind: OverlayMenuKind;
+  runtimeId?: RuntimeTargetId;
+  anchorRect?: Rectangle;
+  point?: OverlayPoint;
+}
+
+interface OverlayMenuBase {
+  kind: OverlayMenuKind;
+  position: OverlayPosition;
+  theme: ThemeMode;
+}
+
+export interface TargetPickerOverlayMenu extends OverlayMenuBase {
+  kind: 'target-picker';
+  targets: ManagerTargetInfo[];
+  openTabIds: RuntimeTargetId[];
+  activeTabId: RuntimeTargetId | null;
+}
+
+export interface ThemePickerOverlayMenu extends OverlayMenuBase {
+  kind: 'theme-picker';
+  selectedTheme: ThemeMode;
+}
+
+export interface TabContextMenuOverlayMenu extends OverlayMenuBase {
+  kind: 'tab-context-menu';
+  runtimeId: RuntimeTargetId;
+  tab: ManagerTabInfo;
+  canUnload: boolean;
+  canCloseLeft: boolean;
+  canCloseRight: boolean;
+  canCloseOthers: boolean;
+}
+
+export type OverlayMenuState =
+  | TargetPickerOverlayMenu
+  | ThemePickerOverlayMenu
+  | TabContextMenuOverlayMenu;
+
+export interface ManagerOverlayState {
+  open: boolean;
+  menu: OverlayMenuState | null;
 }
 
 export interface DevToolsManager {

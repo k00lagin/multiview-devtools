@@ -127,6 +127,10 @@ select {
   border-color: var(--tab-border);
 }
 
+.tabs__tab--unloaded {
+  opacity: 0.68;
+}
+
 .tabs__title {
   min-width: 0;
   overflow: hidden;

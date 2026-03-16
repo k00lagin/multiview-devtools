@@ -14,14 +14,19 @@ import { IPC_CHANNELS } from '../shared/ipc';
 import type {
   DevToolsManager,
   InitDevToolsManagerOptions,
+  ManagerOverlayState,
   ManagerSnapshot,
   ManagerTabInfo,
   ManagerTargetInfo,
+  OverlayPosition,
+  OverlayTriggerRequest,
   PersistedUiState,
   RuntimeTargetId,
+  TabContextMenuOverlayMenu,
   TargetContext,
   TargetLike,
   TargetMeta,
+  ThemeMode,
 } from '../shared/contracts';
 import { createDefaultPersistenceAdapter } from './persistence';
 
@@ -55,6 +60,8 @@ interface InternalState {
   suppressedTargets: Set<RuntimeTargetId>;
   internalWebContentsIds: Set<number>;
   persistedUiState: PersistedUiState;
+  overlayRequest: OverlayTriggerRequest | null;
+  overlayState: ManagerOverlayState;
   persistenceScheduled: boolean;
   autodetectBound: boolean;
   ipcBound: boolean;
@@ -62,6 +69,10 @@ interface InternalState {
 
 const MANAGER_HEADER_HEIGHT = 26;
 const DEBUGGER_PROTOCOL_VERSION = '1.3';
+const CLOSED_OVERLAY_STATE: ManagerOverlayState = {
+  open: false,
+  menu: null,
+};
 const state: InternalState = {
   initialized: false,
   options: {},
@@ -75,6 +86,8 @@ const state: InternalState = {
   suppressedTargets: new Set(),
   internalWebContentsIds: new Set(),
   persistedUiState: {},
+  overlayRequest: null,
+  overlayState: CLOSED_OVERLAY_STATE,
   persistenceScheduled: false,
   autodetectBound: false,
   ipcBound: false,
@@ -92,49 +105,12 @@ function getRendererEntryPath() {
   return path.join(getRuntimeRootDir(), 'renderer', 'index.html');
 }
 
-function getPreloadPath() {
-  return path.join(getRuntimeRootDir(), 'preload', 'index.js');
+function getOverlayEntryPath() {
+  return path.join(getRuntimeRootDir(), 'renderer', 'overlay.html');
 }
 
-function buildOverlayDataUrl() {
-  const html = `<!doctype html>
-  <html lang="en">
-    <head>
-      <meta charset="utf-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>manager:overlay</title>
-      <style>
-        html, body {
-          width: 100%;
-          height: 100%;
-          margin: 0;
-          background: transparent;
-          color: #e8eaed;
-          font: 12px/1.4 "Segoe UI", sans-serif;
-        }
-
-        body {
-          display: grid;
-          place-items: center;
-          border: 1px dashed rgba(138, 180, 248, 0.32);
-          background:
-            radial-gradient(circle at center, rgba(138, 180, 248, 0.08), transparent 52%);
-        }
-
-        .badge {
-          padding: 8px 12px;
-          border-radius: 999px;
-          background: rgba(15, 17, 19, 0.82);
-          border: 1px solid rgba(138, 180, 248, 0.24);
-        }
-      </style>
-    </head>
-    <body>
-      <div class="badge">manager:overlay</div>
-    </body>
-  </html>`;
-
-  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+function getPreloadPath() {
+  return path.join(getRuntimeRootDir(), 'preload', 'index.js');
 }
 
 function getTargetWebContents(target: TargetLike): WebContents | undefined {
@@ -276,6 +252,117 @@ function buildSnapshot(): ManagerSnapshot {
   };
 }
 
+function getResolvedTheme(theme = state.persistedUiState.theme): ThemeMode {
+  return theme ?? 'system';
+}
+
+function chooseOverlayAlign(x: number, estimatedWidth: number) {
+  const viewportWidth = state.managerWindow?.getContentBounds().width ?? 1280;
+  return x + estimatedWidth > viewportWidth - 8 ? 'end' : 'start';
+}
+
+function normalizeOverlayPosition(position: OverlayPosition) {
+  return {
+    x: Math.max(8, Math.round(position.x)),
+    y: Math.max(8, Math.round(position.y)),
+    align: position.align ?? 'start',
+  } satisfies OverlayPosition;
+}
+
+function buildTabContextOverlayMenu(
+  request: OverlayTriggerRequest,
+): TabContextMenuOverlayMenu | null {
+  const runtimeId = request.runtimeId;
+  if (runtimeId == null) {
+    return null;
+  }
+
+  const tab = listTabs().find((entry) => entry.runtimeId === runtimeId);
+  if (!tab) {
+    return null;
+  }
+
+  const index = state.tabOrder.indexOf(runtimeId);
+  const point = request.point ?? {
+    x: request.anchorRect?.x ?? 0,
+    y: (request.anchorRect?.y ?? 0) + (request.anchorRect?.height ?? 0),
+  };
+  const align = chooseOverlayAlign(point.x, 280);
+
+  return {
+    kind: 'tab-context-menu',
+    theme: getResolvedTheme(),
+    position: normalizeOverlayPosition({
+      x: point.x,
+      y: point.y,
+      align,
+    }),
+    runtimeId,
+    tab,
+    canUnload: tab.loaded,
+    canCloseLeft: index > 0,
+    canCloseRight: index >= 0 && index < state.tabOrder.length - 1,
+    canCloseOthers: state.tabOrder.length > 1,
+  };
+}
+
+function buildOverlayState(request: OverlayTriggerRequest | null): ManagerOverlayState {
+  if (!request) {
+    return CLOSED_OVERLAY_STATE;
+  }
+
+  if (request.kind === 'target-picker') {
+    const anchorRect = request.anchorRect;
+    const align = chooseOverlayAlign(anchorRect?.x ?? 8, 460);
+    const position = normalizeOverlayPosition({
+      x: align === 'end' ? (anchorRect?.x ?? 8) + (anchorRect?.width ?? 0) : (anchorRect?.x ?? 8),
+      y: (anchorRect?.y ?? 8) + (anchorRect?.height ?? 0) + 6,
+      align,
+    });
+
+    return {
+      open: true,
+      menu: {
+        kind: 'target-picker',
+        theme: getResolvedTheme(),
+        position,
+        targets: listTargets(),
+        openTabIds: state.tabOrder,
+        activeTabId: state.activeTabId,
+      },
+    };
+  }
+
+  if (request.kind === 'theme-picker') {
+    const anchorRect = request.anchorRect;
+    const position = normalizeOverlayPosition({
+      x: (anchorRect?.x ?? 8) + (anchorRect?.width ?? 0),
+      y: (anchorRect?.y ?? 8) + (anchorRect?.height ?? 0) + 6,
+      align: 'end',
+    });
+
+    return {
+      open: true,
+      menu: {
+        kind: 'theme-picker',
+        theme: getResolvedTheme(),
+        position,
+        selectedTheme: getResolvedTheme(),
+      },
+    };
+  }
+
+  const menu = buildTabContextOverlayMenu(request);
+  if (!menu) {
+    return CLOSED_OVERLAY_STATE;
+  }
+
+  return {
+    open: true,
+    menu,
+  };
+}
+
 function buildEmulatedMediaFeatures(theme: PersistedUiState['theme']) {
   if (theme === 'light' || theme === 'dark') {
     return [
@@ -322,13 +409,31 @@ function syncDevToolsThemeForLoadedTabs() {
   }
 }
 
-function broadcastSnapshot() {
-  const webContents = state.managerUiView?.webContents;
+function refreshOverlayState() {
+  state.overlayState = buildOverlayState(state.overlayRequest);
+  if (!state.overlayState.open) {
+    state.overlayRequest = null;
+  }
+}
+
+function broadcastOverlayState() {
+  refreshOverlayState();
+  const webContents = state.managerOverlayView?.webContents;
   if (!webContents || webContents.isDestroyed()) {
     return;
   }
 
-  webContents.send(IPC_CHANNELS.stateChanged, buildSnapshot());
+  webContents.send(IPC_CHANNELS.overlayStateChanged, state.overlayState);
+}
+
+function broadcastSnapshot() {
+  refreshOverlayState();
+  const webContents = state.managerUiView?.webContents;
+  if (webContents && !webContents.isDestroyed()) {
+    webContents.send(IPC_CHANNELS.stateChanged, buildSnapshot());
+  }
+
+  broadcastOverlayState();
 }
 
 function schedulePersistenceSave() {
@@ -361,6 +466,38 @@ function rememberInternalWebContents(id: number) {
   state.internalWebContentsIds.add(id);
   if (!state.options.includeSelf) {
     unregisterWebContents(id, false);
+  }
+}
+
+function closeOverlay() {
+  state.overlayRequest = null;
+  state.overlayState = CLOSED_OVERLAY_STATE;
+  broadcastOverlayState();
+  layoutActiveTabView();
+
+  try {
+    state.managerUiView?.webContents.focus();
+  } catch {
+    // Best-effort focus restore.
+  }
+}
+
+function openOverlay(request: OverlayTriggerRequest) {
+  state.overlayRequest = request;
+  refreshOverlayState();
+  if (!state.overlayState.open) {
+    broadcastOverlayState();
+    layoutActiveTabView();
+    return;
+  }
+
+  broadcastOverlayState();
+  layoutActiveTabView();
+
+  try {
+    state.managerOverlayView?.webContents.focus();
+  } catch {
+    // Best-effort focus only.
   }
 }
 
@@ -397,12 +534,21 @@ function layoutActiveTabView() {
 
   const overlayView = state.managerOverlayView;
   if (overlayView && !overlayView.webContents.isDestroyed()) {
-    overlayView.setBounds({
-      x: 0,
-      y: 0,
-      width: 0,
-      height: 0,
-    });
+    if (state.overlayState.open) {
+      overlayView.setBounds({
+        x: 0,
+        y: 0,
+        width,
+        height,
+      });
+    } else {
+      overlayView.setBounds({
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+      });
+    }
   }
 }
 
@@ -474,7 +620,9 @@ function openTab(target: TargetLike) {
     return;
   }
 
-  if (!state.tabs.has(runtimeId)) {
+  const existingTab = state.tabs.get(runtimeId);
+  const previousActiveTabId = state.activeTabId;
+  if (!existingTab) {
     state.tabs.set(runtimeId, {
       runtimeId,
       view: null,
@@ -494,6 +642,13 @@ function openTab(target: TargetLike) {
 
   const view = ensureTabView(runtimeId);
   if (!view) {
+    if (!existingTab) {
+      state.tabs.delete(runtimeId);
+      state.tabOrder = state.tabOrder.filter((id) => id !== runtimeId);
+      state.activeTabId = previousActiveTabId ?? null;
+      broadcastSnapshot();
+      layoutActiveTabView();
+    }
     return;
   }
 
@@ -535,22 +690,51 @@ function unloadTab(target: TargetLike) {
   layoutActiveTabView();
 }
 
+function closeTabsByIds(runtimeIds: RuntimeTargetId[], fallbackActiveId: RuntimeTargetId | null = null) {
+  const idsToClose = runtimeIds.filter((runtimeId) => state.tabs.has(runtimeId));
+  if (!idsToClose.length) {
+    return;
+  }
+
+  const activeRemoved = state.activeTabId != null && idsToClose.includes(state.activeTabId);
+  for (const runtimeId of idsToClose) {
+    destroyTabView(runtimeId);
+    state.tabs.delete(runtimeId);
+  }
+
+  state.tabOrder = state.tabOrder.filter((runtimeId) => !idsToClose.includes(runtimeId));
+
+  if (activeRemoved) {
+    if (fallbackActiveId != null && state.tabs.has(fallbackActiveId)) {
+      state.activeTabId = fallbackActiveId;
+    } else {
+      state.activeTabId = state.tabOrder.at(-1) ?? null;
+    }
+  }
+
+  if (
+    state.overlayState.open &&
+    state.overlayState.menu?.kind === 'tab-context-menu' &&
+    idsToClose.includes(state.overlayState.menu.runtimeId)
+  ) {
+    state.overlayRequest = null;
+    state.overlayState = CLOSED_OVERLAY_STATE;
+  }
+
+  broadcastSnapshot();
+  layoutActiveTabView();
+}
+
 function closeTab(target: TargetLike) {
   const runtimeId = toRuntimeTargetId(target);
   if (runtimeId == null) {
     return;
   }
 
-  unloadTab(runtimeId);
-  state.tabs.delete(runtimeId);
-  state.tabOrder = state.tabOrder.filter((id) => id !== runtimeId);
-
-  if (state.activeTabId === runtimeId) {
-    state.activeTabId = state.tabOrder.at(-1) ?? null;
-  }
-
-  broadcastSnapshot();
-  layoutActiveTabView();
+  const index = state.tabOrder.indexOf(runtimeId);
+  const fallbackActiveId =
+    state.tabOrder[index - 1] ?? state.tabOrder[index + 1] ?? state.tabOrder.at(-1) ?? null;
+  closeTabsByIds([runtimeId], fallbackActiveId);
 }
 
 function closeTabsLeftOf(target: TargetLike) {
@@ -564,9 +748,7 @@ function closeTabsLeftOf(target: TargetLike) {
     return;
   }
 
-  for (const id of state.tabOrder.slice(0, index)) {
-    closeTab(id);
-  }
+  closeTabsByIds(state.tabOrder.slice(0, index), runtimeId);
 }
 
 function closeTabsRightOf(target: TargetLike) {
@@ -580,9 +762,7 @@ function closeTabsRightOf(target: TargetLike) {
     return;
   }
 
-  for (const id of [...state.tabOrder.slice(index + 1)]) {
-    closeTab(id);
-  }
+  closeTabsByIds(state.tabOrder.slice(index + 1), runtimeId);
 }
 
 function closeOtherTabs(target: TargetLike) {
@@ -591,11 +771,10 @@ function closeOtherTabs(target: TargetLike) {
     return;
   }
 
-  for (const id of [...state.tabOrder]) {
-    if (id !== runtimeId) {
-      closeTab(id);
-    }
-  }
+  closeTabsByIds(
+    state.tabOrder.filter((id) => id !== runtimeId),
+    runtimeId,
+  );
 }
 
 function focusSource(target: TargetLike) {
@@ -824,8 +1003,11 @@ function createManagerWindow() {
   });
   const managerOverlayView = new WebContentsView({
     webPreferences: {
+      sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
+      preload: getPreloadPath(),
+      transparent: true,
     },
   });
 
@@ -834,6 +1016,8 @@ function createManagerWindow() {
   state.managerOverlayView = managerOverlayView;
   rememberInternalWebContents(managerUiView.webContents.id);
   rememberInternalWebContents(managerOverlayView.webContents.id);
+
+  managerOverlayView.setBackgroundColor('#00000000');
 
   managerWindow.contentView.addChildView(managerUiView, 0);
   for (const tab of state.tabs.values()) {
@@ -871,19 +1055,26 @@ function createManagerWindow() {
   managerWindow.on('resize', relayout);
   managerWindow.on('move', syncWindowBoundsIntoState);
   managerWindow.on('resize', syncWindowBoundsIntoState);
+  managerWindow.on('blur', closeOverlay);
   managerWindow.on('closed', () => {
     state.managerWindow = null;
     state.managerUiView = null;
     state.managerOverlayView = null;
+    state.overlayRequest = null;
+    state.overlayState = CLOSED_OVERLAY_STATE;
   });
 
   managerUiView.webContents.on('did-finish-load', () => {
     managerUiView.webContents.send(IPC_CHANNELS.stateChanged, buildSnapshot());
     relayout();
   });
+  managerOverlayView.webContents.on('did-finish-load', () => {
+    broadcastOverlayState();
+    relayout();
+  });
 
   void managerUiView.webContents.loadFile(getRendererEntryPath());
-  void managerOverlayView.webContents.loadURL(buildOverlayDataUrl());
+  void managerOverlayView.webContents.loadFile(getOverlayEntryPath());
   relayout();
   return managerWindow;
 }
@@ -896,6 +1087,10 @@ function wireIpc() {
   state.ipcBound = true;
 
   ipcMain.handle(IPC_CHANNELS.getSnapshot, () => buildSnapshot());
+  ipcMain.handle(IPC_CHANNELS.getOverlayState, () => {
+    refreshOverlayState();
+    return state.overlayState;
+  });
   ipcMain.handle(IPC_CHANNELS.refreshTargets, () => refreshTargets());
   ipcMain.handle(IPC_CHANNELS.openTab, (_event: unknown, runtimeId: number) => openTab(runtimeId));
   ipcMain.handle(IPC_CHANNELS.activateTab, (_event: unknown, runtimeId: number) =>
@@ -926,6 +1121,10 @@ function wireIpc() {
     schedulePersistenceSave();
     broadcastSnapshot();
   });
+  ipcMain.handle(IPC_CHANNELS.openOverlay, (_event: unknown, request: OverlayTriggerRequest) =>
+    openOverlay(request),
+  );
+  ipcMain.handle(IPC_CHANNELS.closeOverlay, () => closeOverlay());
 }
 
 function buildApi(): DevToolsManager {

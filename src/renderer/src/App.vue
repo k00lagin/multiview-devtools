@@ -13,11 +13,9 @@ import { useManagerState } from './composables/useManagerState';
 const {
   snapshot,
   refreshTargets,
-  openTab,
   activateTab,
   closeTab,
   focusSource,
-  setTheme,
 } = useManagerState();
 
 const selectedTheme = computed<ThemeMode>(() => snapshot.value.uiState.theme ?? 'system');
@@ -67,6 +65,37 @@ function cycleTab(direction: 1 | -1) {
   if (nextTab) {
     void activateTab(nextTab.runtimeId);
   }
+}
+
+function toPlainRect(rect: DOMRect) {
+  return {
+    x: rect.x,
+    y: rect.y,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+async function openTargetPicker(anchorRect: DOMRect) {
+  await window.multiviewDevtools.openOverlay({
+    kind: 'target-picker',
+    anchorRect: toPlainRect(anchorRect),
+  });
+}
+
+async function openThemePicker(anchorRect: DOMRect) {
+  await window.multiviewDevtools.openOverlay({
+    kind: 'theme-picker',
+    anchorRect: toPlainRect(anchorRect),
+  });
+}
+
+async function openTabContextMenu(payload: { runtimeId: number; point: { x: number; y: number } }) {
+  await window.multiviewDevtools.openOverlay({
+    kind: 'tab-context-menu',
+    runtimeId: payload.runtimeId,
+    point: payload.point,
+  });
 }
 
 function handleKeydown(event: KeyboardEvent) {
@@ -128,16 +157,14 @@ watch(
         @close="closeTab"
         @focus="focusSource"
         @reorder="reorderTabs"
+        @tab-menu="openTabContextMenu"
       />
 
-      <TargetPickerButton
-        :targets="snapshot.targets"
-        @select="openTab"
-      />
+      <TargetPickerButton @trigger="openTargetPicker" />
 
       <ThemePickerButton
         :theme="selectedTheme"
-        @select="setTheme"
+        @trigger="openThemePicker"
       />
 
       <button

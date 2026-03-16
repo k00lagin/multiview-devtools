@@ -8,10 +8,10 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  select: [theme: ThemeMode];
+  trigger: [anchorRect: DOMRect];
 }>();
 
-const selectElement = ref<HTMLSelectElement | null>(null);
+const buttonElement = ref<HTMLButtonElement | null>(null);
 
 const iconHref = computed(() => {
   if (props.theme === 'light') {
@@ -25,60 +25,27 @@ const iconHref = computed(() => {
   return '#icon-theme-system';
 });
 
-function openPicker() {
-  const picker = selectElement.value;
-  if (!picker) {
+function triggerOverlay() {
+  const rect = buttonElement.value?.getBoundingClientRect();
+  if (!rect) {
     return;
   }
 
-  try {
-    if ('showPicker' in picker) {
-      picker.showPicker();
-      return;
-    }
-  } catch {
-    // Fall through to click.
-  }
-
-  picker.click();
-}
-
-function onChange(event: Event) {
-  emit('select', (event.target as HTMLSelectElement).value as ThemeMode);
+  emit('trigger', rect);
 }
 </script>
 
 <template>
-  <div class="picker">
-    <button
-      class="btn btn--icon picker__button"
-      type="button"
-      title="Theme"
-      aria-label="Theme"
-      @click="openPicker"
-    >
-      <svg class="icon">
-        <use :href="iconHref" />
-      </svg>
-    </button>
-
-    <select
-      ref="selectElement"
-      class="picker__select picker__select--hidden"
-      title="Theme"
-      aria-label="Theme"
-      :value="props.theme"
-      @change="onChange"
-    >
-      <option value="system">
-        System
-      </option>
-      <option value="light">
-        Light
-      </option>
-      <option value="dark">
-        Dark
-      </option>
-    </select>
-  </div>
+  <button
+    ref="buttonElement"
+    class="btn btn--icon"
+    type="button"
+    title="Theme"
+    aria-label="Theme"
+    @click="triggerOverlay"
+  >
+    <svg class="icon">
+      <use :href="iconHref" />
+    </svg>
+  </button>
 </template>
