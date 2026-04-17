@@ -156,7 +156,10 @@ watch(
 
       <TargetPickerButton @trigger="openTargetPicker" />
 
-      <ThemePickerButton :theme="selectedTheme" @trigger="openThemePicker" />
+      <ThemePickerButton
+        :theme="selectedTheme"
+        @trigger="openThemePicker"
+      />
 
       <button
         class="btn btn--icon"
@@ -172,7 +175,10 @@ watch(
     </header>
 
     <main>
-      <ManagerEmptyState v-if="!orderedTabs.length" :has-targets="snapshot.targets.length > 0" />
+      <ManagerEmptyState
+        v-if="!orderedTabs.length"
+        :has-targets="snapshot.targets.length > 0"
+      />
     </main>
   </div>
 </template>

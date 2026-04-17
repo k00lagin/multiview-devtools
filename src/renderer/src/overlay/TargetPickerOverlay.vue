@@ -83,10 +83,18 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="overlay-card overlay-card--picker" :style="panelStyle()" @mousedown.stop>
+  <section
+    class="overlay-card overlay-card--picker"
+    :style="panelStyle()"
+    @mousedown.stop
+  >
     <header class="overlay-card__header">
-      <div class="overlay-card__title">Open DevTools target</div>
-      <div class="overlay-card__hint">{{ props.menu.targets.length }} detected</div>
+      <div class="overlay-card__title">
+        Open DevTools target
+      </div>
+      <div class="overlay-card__hint">
+        {{ props.menu.targets.length }} detected
+      </div>
     </header>
 
     <div class="overlay-search">
@@ -96,7 +104,7 @@ onMounted(() => {
         class="overlay-search__input"
         type="search"
         placeholder="Search by title, id, hostname, or URL"
-      />
+      >
     </div>
 
     <div class="overlay-list">
@@ -125,11 +133,17 @@ onMounted(() => {
         </div>
       </button>
 
-      <div v-if="!hasTargets" class="overlay-list__empty">
+      <div
+        v-if="!hasTargets"
+        class="overlay-list__empty"
+      >
         No managed webContents are available yet.
       </div>
 
-      <div v-else-if="!filteredTargets.length" class="overlay-list__empty">
+      <div
+        v-else-if="!filteredTargets.length"
+        class="overlay-list__empty"
+      >
         No targets match this query.
       </div>
     </div>

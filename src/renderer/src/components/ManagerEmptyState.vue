@@ -9,6 +9,8 @@ const props = defineProps<{
     <template v-if="props.hasTargets">
       Open a tab from the picker to mount its DevTools frontend.
     </template>
-    <template v-else> No webContents detected. </template>
+    <template v-else>
+      No webContents detected.
+    </template>
   </div>
 </template>
