@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { cp, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -98,24 +98,21 @@ async function main() {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'multiview-devtools-pack-smoke-'));
 
   try {
-    const packOutput = await runCommand(npmCommand, ['pack', '--pack-destination', tempRoot], {
+    await runCommand(npmCommand, ['pack', '--pack-destination', tempRoot], {
       cwd: rootDir,
       env: process.env,
       label: 'npm pack',
     });
 
-    const tgzName = packOutput
-      .trim()
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .at(-1);
+    const tgzEntries = (await readdir(tempRoot, { withFileTypes: true })).filter(
+      (entry) => entry.isFile() && entry.name.endsWith('.tgz'),
+    );
 
-    if (!tgzName?.endsWith('.tgz')) {
+    if (tgzEntries.length !== 1) {
       throw new Error('Unable to determine packed tarball name');
     }
 
-    const tarballPath = path.join(tempRoot, tgzName);
+    const tarballPath = path.join(tempRoot, tgzEntries[0].name);
     const fixtureDir = path.join(tempRoot, 'fixture-app');
     await cp(fixtureSourceDir, fixtureDir, { recursive: true });
 
