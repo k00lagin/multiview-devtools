@@ -4,6 +4,22 @@
   "description": "Electron multi-webContents DevTools manager package with a bundled Vue-based manager UI.",
   "license": "MIT",
   "author": "Vsevolod Kulagin <k00lagin@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/k00lagin/multiview-devtools.git"
+  },
+  "homepage": "https://github.com/k00lagin/multiview-devtools#readme",
+  "bugs": {
+    "url": "https://github.com/k00lagin/multiview-devtools/issues"
+  },
+  "keywords": [
+    "electron",
+    "devtools",
+    "webcontents",
+    "webcontentsview",
+    "debugging"
+  ],
+  "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -21,12 +37,11 @@
     }
   },
   "engines": {
-    "node": ">=20.0.0",
-    "bun": ">=1.3.7"
+    "node": ">=20.0.0"
   },
   "packageManager": "bun@1.3.7",
   "peerDependencies": {
-    "electron": ">=30.0.0"
+    "electron": ">=41 <42"
   },
   "scripts": {
     "clean": "rimraf dist",
@@ -35,6 +50,8 @@
     "build:package": "tsc -p tsconfig.build.json && node ./scripts/prepare-dist.mjs",
     "prepack": "bun run build",
     "dev": "bun run build && node ./scripts/run-electron.mjs ./dev",
+    "smoke:pack": "node ./scripts/run-pack-smoke.mjs",
+    "check:release": "bun run lint && bun run typecheck && bun run smoke:pack",
     "typecheck": "vue-tsc --noEmit",
     "lint": "eslint src dev scripts eslint.config.mjs vite.config.ts",
     "format": "prettier --write .",

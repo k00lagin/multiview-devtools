@@ -4,13 +4,13 @@ Tabbed DevTools manager for Electron apps that work with multiple `WebContents` 
 
 ## Requirements
 
-- Electron `>=30`
 - Node `>=20`
+- Electron `41.x` currently tested
 
 ## Install
 
 ```bash
-npm install multiview-devtools electron
+npm install multiview-devtools electron@41
 ```
 
 ## Usage
@@ -80,7 +80,13 @@ Returned manager methods:
 
 - The package is main-process-first. Its renderer UI is bundled internally.
 - The manager is designed around `WebContentsView`-based workflows and Electron's modern multi-view APIs.
-- Internally it relies on `webContents.setDevToolsWebContents(...)`, which is not a prominently documented Electron API. Test against the Electron major versions you plan to support.
+- Internally it depends on `WebContentsView`, `BaseWindow`, and `webContents.setDevToolsWebContents(...)`.
+
+## Compatibility
+
+- Currently tested against Electron `41.x` only.
+- Broader compatibility may exist, but it is not guaranteed yet.
+- The package exposes CommonJS plus an ESM compatibility entrypoint; it does not currently ship a separate native ESM build.
 
 ## Packaging
 

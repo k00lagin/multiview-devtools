@@ -1,0 +1,146 @@
+import { spawn } from 'node:child_process';
+import { cp, mkdtemp, readFile, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const fixtureSourceDir = path.join(rootDir, 'smoke', 'fixture-app');
+const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const electronBinaryName = process.platform === 'win32' ? 'electron.cmd' : 'electron';
+
+function quoteWindowsArg(value) {
+  if (!value.length) {
+    return '""';
+  }
+
+  if (!/[\s"]/u.test(value)) {
+    return value;
+  }
+
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+function runCommand(command, args, { cwd, env, label }) {
+  return new Promise((resolve, reject) => {
+    const sanitizedEnv = Object.fromEntries(
+      Object.entries(env).filter(([, value]) => value != null),
+    );
+    const commandSpec =
+      process.platform === 'win32'
+        ? {
+            command: 'cmd.exe',
+            args: ['/d', '/s', '/c', [command, ...args].map(quoteWindowsArg).join(' ')],
+          }
+        : {
+            command,
+            args,
+          };
+
+    const child = spawn(commandSpec.command, commandSpec.args, {
+      cwd,
+      env: sanitizedEnv,
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: false,
+    });
+
+    let output = '';
+
+    const onData = (chunk) => {
+      const text = chunk.toString();
+      output += text;
+      process.stdout.write(text);
+    };
+
+    const onErrorData = (chunk) => {
+      const text = chunk.toString();
+      output += text;
+      process.stderr.write(text);
+    };
+
+    child.stdout.on('data', onData);
+    child.stderr.on('data', onErrorData);
+
+    child.on('error', (error) => {
+      reject(error);
+    });
+
+    child.on('exit', (code, signal) => {
+      if (code === 0) {
+        resolve(output);
+        return;
+      }
+
+      const suffix = signal ? ` (signal: ${signal})` : '';
+      reject(new Error(`${label} failed with exit code ${code}${suffix}`));
+    });
+  });
+}
+
+async function runSmokeEntrypoint(fixtureDir, entrypoint, sentinel) {
+  const electronPath = path.join(fixtureDir, 'node_modules', '.bin', electronBinaryName);
+  const output = await runCommand(electronPath, [entrypoint], {
+    cwd: fixtureDir,
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: undefined,
+    },
+    label: `electron ${entrypoint}`,
+  });
+
+  if (!output.includes(sentinel)) {
+    throw new Error(`Missing smoke sentinel ${sentinel} for ${entrypoint}`);
+  }
+}
+
+async function main() {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'multiview-devtools-pack-smoke-'));
+
+  try {
+    const packOutput = await runCommand(npmCommand, ['pack', '--pack-destination', tempRoot], {
+      cwd: rootDir,
+      env: process.env,
+      label: 'npm pack',
+    });
+
+    const tgzName = packOutput
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .at(-1);
+
+    if (!tgzName?.endsWith('.tgz')) {
+      throw new Error('Unable to determine packed tarball name');
+    }
+
+    const tarballPath = path.join(tempRoot, tgzName);
+    const fixtureDir = path.join(tempRoot, 'fixture-app');
+    await cp(fixtureSourceDir, fixtureDir, { recursive: true });
+
+    await runCommand(npmCommand, ['install', '--no-audit', '--no-fund'], {
+      cwd: fixtureDir,
+      env: process.env,
+      label: 'fixture npm install',
+    });
+
+    await runCommand(npmCommand, ['install', '--no-audit', '--no-fund', tarballPath], {
+      cwd: fixtureDir,
+      env: process.env,
+      label: 'fixture npm install tarball',
+    });
+
+    await runSmokeEntrypoint(fixtureDir, 'main.cjs', 'SMOKE_OK:cjs');
+    await runSmokeEntrypoint(fixtureDir, 'main.mjs', 'SMOKE_OK:esm');
+
+    const fixturePackageJson = await readFile(path.join(fixtureDir, 'package.json'), 'utf8');
+    if (!fixturePackageJson.includes('"electron": "41.0.2"')) {
+      throw new Error('Fixture dependency drifted from the tested Electron version');
+    }
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+}
+
+await main();
