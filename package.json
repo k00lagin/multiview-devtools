@@ -3,11 +3,15 @@
   "version": "0.1.0",
   "description": "Electron multi-webContents DevTools manager package with a bundled Vue-based manager UI.",
   "license": "MIT",
+  "author": "Vsevolod Kulagin <k00lagin@gmail.com>",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist/**/*",
+    "!dist/**/*.map",
+    "README.md",
+    "LICENSE"
   ],
   "exports": {
     ".": {
@@ -29,6 +33,7 @@
     "build": "bun run clean && bun run build:renderer && bun run build:package",
     "build:renderer": "vite build",
     "build:package": "tsc -p tsconfig.build.json && node ./scripts/prepare-dist.mjs",
+    "prepack": "bun run build",
     "dev": "bun run build && node ./scripts/run-electron.mjs ./dev",
     "typecheck": "vue-tsc --noEmit",
     "lint": "eslint src dev scripts eslint.config.mjs vite.config.ts",

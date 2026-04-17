@@ -6,7 +6,7 @@ const { initDevToolsManager } = require('../dist/index.js');
 const VIEW_GAP = 12;
 const VIEW_PADDING = 12;
 
-function buildDemoHtml(label, hue) {
+function buildDemoHtml(label) {
   return `<!doctype html>
   <html lang="en">
     <head>
@@ -154,10 +154,10 @@ async function createDevSandbox() {
 
   await Promise.all([
     leftView.webContents.loadURL(
-      `data:text/html;charset=utf-8,${encodeURIComponent(buildDemoHtml('Left Panel', 188))}`,
+      `data:text/html;charset=utf-8,${encodeURIComponent(buildDemoHtml('Left Panel'))}`,
     ),
     rightView.webContents.loadURL(
-      `data:text/html;charset=utf-8,${encodeURIComponent(buildDemoHtml('Right Panel', 24))}`,
+      `data:text/html;charset=utf-8,${encodeURIComponent(buildDemoHtml('Right Panel'))}`,
     ),
   ]);
 
