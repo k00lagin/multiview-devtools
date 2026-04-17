@@ -22,18 +22,12 @@ const title = computed(() => props.menu.tab.meta.title?.trim() || `wc:${props.me
 </script>
 
 <template>
-  <section
-    class="overlay-card"
-    :style="panelStyle"
-    @mousedown.stop
-  >
+  <section class="overlay-card" :style="panelStyle" @mousedown.stop>
     <header class="overlay-card__header">
       <div class="overlay-card__title">
         {{ title }}
       </div>
-      <div class="overlay-card__hint">
-        #{{ props.menu.runtimeId }}
-      </div>
+      <div class="overlay-card__hint">#{{ props.menu.runtimeId }}</div>
     </header>
 
     <div class="overlay-menu">
@@ -42,9 +36,7 @@ const title = computed(() => props.menu.tab.meta.title?.trim() || `wc:${props.me
         type="button"
         @click="emit('action', 'focus-source', props.menu.runtimeId)"
       >
-        <div class="overlay-menu__label">
-          Focus Source Target
-        </div>
+        <div class="overlay-menu__label">Focus Source Target</div>
       </button>
 
       <div class="overlay-menu__separator" />
@@ -55,9 +47,7 @@ const title = computed(() => props.menu.tab.meta.title?.trim() || `wc:${props.me
         :disabled="!props.menu.canUnload"
         @click="emit('action', 'unload', props.menu.runtimeId)"
       >
-        <div class="overlay-menu__label">
-          Unload tab
-        </div>
+        <div class="overlay-menu__label">Unload tab</div>
       </button>
 
       <button
@@ -65,9 +55,7 @@ const title = computed(() => props.menu.tab.meta.title?.trim() || `wc:${props.me
         type="button"
         @click="emit('action', 'close', props.menu.runtimeId)"
       >
-        <div class="overlay-menu__label">
-          Close tab
-        </div>
+        <div class="overlay-menu__label">Close tab</div>
       </button>
 
       <button
@@ -76,9 +64,7 @@ const title = computed(() => props.menu.tab.meta.title?.trim() || `wc:${props.me
         :disabled="!props.menu.canCloseLeft"
         @click="emit('action', 'close-left', props.menu.runtimeId)"
       >
-        <div class="overlay-menu__label">
-          Close left
-        </div>
+        <div class="overlay-menu__label">Close left</div>
       </button>
 
       <button
@@ -87,9 +73,7 @@ const title = computed(() => props.menu.tab.meta.title?.trim() || `wc:${props.me
         :disabled="!props.menu.canCloseRight"
         @click="emit('action', 'close-right', props.menu.runtimeId)"
       >
-        <div class="overlay-menu__label">
-          Close right
-        </div>
+        <div class="overlay-menu__label">Close right</div>
       </button>
 
       <button
@@ -98,9 +82,7 @@ const title = computed(() => props.menu.tab.meta.title?.trim() || `wc:${props.me
         :disabled="!props.menu.canCloseOthers"
         @click="emit('action', 'close-others', props.menu.runtimeId)"
       >
-        <div class="overlay-menu__label">
-          Close others
-        </div>
+        <div class="overlay-menu__label">Close others</div>
       </button>
     </div>
   </section>

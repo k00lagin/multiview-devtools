@@ -53,7 +53,7 @@
     "smoke:pack": "node ./scripts/run-pack-smoke.mjs",
     "check:release": "bun run lint && bun run typecheck && bun run smoke:pack",
     "typecheck": "vue-tsc --noEmit",
-    "lint": "eslint src dev scripts eslint.config.mjs vite.config.ts",
+    "lint": "eslint src dev scripts smoke eslint.config.mjs vite.config.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -63,6 +63,7 @@
     "@vitejs/plugin-vue": "^6.0.5",
     "electron": "^41.0.2",
     "eslint": "^10.0.3",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-vue": "^10.8.0",
     "globals": "^17.4.0",
     "prettier": "^3.8.1",
