@@ -20,7 +20,7 @@ Key rules:
 - The overlay is hidden by setting its bounds to `0x0` and shown by stretching it to the full manager window.
 - UI renderers send trigger intent and geometry; main decides which overlay to open and where to place it.
 
-This follows the proven `WebContentsView` layering strategy from [WEB_CONTENTS_VIEW_STRATEGY.md](/C:/Git/_probe/multiview-devtools/WEB_CONTENTS_VIEW_STRATEGY.md).
+This follows the proven `WebContentsView` layering strategy from [WEB_CONTENTS_VIEW_STRATEGY.md](./WEB_CONTENTS_VIEW_STRATEGY.md).
 
 ## 2. Target Scope
 

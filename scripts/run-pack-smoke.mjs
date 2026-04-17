@@ -136,7 +136,12 @@ async function main() {
       throw new Error('Fixture dependency drifted from the tested Electron version');
     }
   } finally {
-    await rm(tempRoot, { recursive: true, force: true });
+    await rm(tempRoot, {
+      recursive: true,
+      force: true,
+      maxRetries: 20,
+      retryDelay: 250,
+    });
   }
 }
 
