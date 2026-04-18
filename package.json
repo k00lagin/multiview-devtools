@@ -1,6 +1,6 @@
 {
   "name": "multiview-devtools",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Electron multi-webContents DevTools manager package with a bundled Vue-based manager UI.",
   "license": "MIT",
   "author": "Vsevolod Kulagin <k00lagin@gmail.com>",
