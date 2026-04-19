@@ -59,7 +59,9 @@ input {
 }
 
 .overlay-card--picker {
+  width: min(460px, calc(100vw - 16px));
   min-width: min(460px, calc(100vw - 16px));
+  max-width: min(460px, calc(100vw - 16px));
 }
 
 .overlay-card__header {
@@ -106,7 +108,8 @@ input {
 
 .overlay-list {
   padding: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .overlay-list__empty {
@@ -125,6 +128,8 @@ input {
   color: inherit;
   text-align: left;
   cursor: pointer;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .overlay-target + .overlay-target {
@@ -156,8 +161,17 @@ input {
   margin-top: 4px;
   color: var(--muted);
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.overlay-target__meta > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .overlay-target__trail {
