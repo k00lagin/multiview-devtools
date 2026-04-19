@@ -1,7 +1,4 @@
 {
   "name": "multiview-devtools-smoke-fixture",
-  "private": true,
-  "dependencies": {
-    "electron": "41.0.2"
-  }
+  "private": true
 }

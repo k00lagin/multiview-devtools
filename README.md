@@ -5,12 +5,12 @@ Tabbed DevTools manager for Electron apps that work with multiple `WebContents` 
 ## Requirements
 
 - Node `>=20`
-- Electron `41.x` currently tested
+- Electron `>=30 <42`
 
 ## Install
 
 ```bash
-npm install multiview-devtools electron@41
+npm install multiview-devtools electron@30
 ```
 
 ## Usage
@@ -84,10 +84,14 @@ Returned manager methods:
 
 ## Compatibility
 
-- Currently tested against Electron `41.x` only.
-- Broader compatibility may exist, but it is not guaranteed yet.
-- The package exposes CommonJS plus an ESM compatibility entrypoint; it does not currently ship a separate native ESM build.
+> Notice: Electron `29.x` and earlier are out of scope.
+
+- Supported package range: Electron `30.x` through `41.x`.
+- Package compatibility is currently constrained to `electron >=30 <42`.
+- Release-readiness smoke tests currently run against Electron `30.5.1`, `35.7.5`, and `41.2.1`.
 
 ## Packaging
+
+The package exposes CommonJS plus an ESM compatibility entrypoint; it does not currently ship a separate native ESM build.
 
 Published tarballs include built runtime artifacts from `dist/`, plus this `README.md` and `LICENSE`. Source maps are excluded from the npm package to keep the tarball smaller.

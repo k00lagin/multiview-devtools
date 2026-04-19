@@ -8,6 +8,7 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const fixtureSourceDir = path.join(rootDir, 'smoke', 'fixture-app');
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const electronBinaryName = process.platform === 'win32' ? 'electron.cmd' : 'electron';
+const DEFAULT_ELECTRON_VERSIONS = ['30.5.1', '35.7.5', '41.2.1'];
 
 function quoteWindowsArg(value) {
   if (!value.length) {
@@ -94,7 +95,52 @@ async function runSmokeEntrypoint(fixtureDir, entrypoint, sentinel) {
   }
 }
 
+function getSmokeElectronVersions() {
+  const rawValue = process.env.SMOKE_ELECTRON_VERSIONS;
+  if (!rawValue) {
+    return DEFAULT_ELECTRON_VERSIONS;
+  }
+
+  return rawValue
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+async function prepareFixture(tempRoot, tarballPath, electronVersion) {
+  const fixtureDir = path.join(tempRoot, `fixture-app-electron-${electronVersion}`);
+  await cp(fixtureSourceDir, fixtureDir, { recursive: true });
+
+  await runCommand(
+    npmCommand,
+    ['install', '--no-audit', '--no-fund', `electron@${electronVersion}`],
+    {
+      cwd: fixtureDir,
+      env: process.env,
+      label: `fixture npm install electron@${electronVersion}`,
+    },
+  );
+
+  await runCommand(npmCommand, ['install', '--no-audit', '--no-fund', tarballPath], {
+    cwd: fixtureDir,
+    env: process.env,
+    label: `fixture npm install tarball for electron@${electronVersion}`,
+  });
+
+  const fixturePackageJson = await readFile(path.join(fixtureDir, 'package.json'), 'utf8');
+  if (!fixturePackageJson.includes(`"electron": "^${electronVersion}"`)) {
+    throw new Error(`Fixture dependency drifted from the tested Electron version ${electronVersion}`);
+  }
+
+  return fixtureDir;
+}
+
 async function main() {
+  const electronVersions = getSmokeElectronVersions();
+  if (!electronVersions.length) {
+    throw new Error('No Electron versions configured for smoke testing');
+  }
+
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'multiview-devtools-pack-smoke-'));
 
   try {
@@ -113,27 +159,10 @@ async function main() {
     }
 
     const tarballPath = path.join(tempRoot, tgzEntries[0].name);
-    const fixtureDir = path.join(tempRoot, 'fixture-app');
-    await cp(fixtureSourceDir, fixtureDir, { recursive: true });
-
-    await runCommand(npmCommand, ['install', '--no-audit', '--no-fund'], {
-      cwd: fixtureDir,
-      env: process.env,
-      label: 'fixture npm install',
-    });
-
-    await runCommand(npmCommand, ['install', '--no-audit', '--no-fund', tarballPath], {
-      cwd: fixtureDir,
-      env: process.env,
-      label: 'fixture npm install tarball',
-    });
-
-    await runSmokeEntrypoint(fixtureDir, 'main.cjs', 'SMOKE_OK:cjs');
-    await runSmokeEntrypoint(fixtureDir, 'main.mjs', 'SMOKE_OK:esm');
-
-    const fixturePackageJson = await readFile(path.join(fixtureDir, 'package.json'), 'utf8');
-    if (!fixturePackageJson.includes('"electron": "41.0.2"')) {
-      throw new Error('Fixture dependency drifted from the tested Electron version');
+    for (const electronVersion of electronVersions) {
+      const fixtureDir = await prepareFixture(tempRoot, tarballPath, electronVersion);
+      await runSmokeEntrypoint(fixtureDir, 'main.cjs', 'SMOKE_OK:cjs');
+      await runSmokeEntrypoint(fixtureDir, 'main.mjs', 'SMOKE_OK:esm');
     }
   } finally {
     await rm(tempRoot, {

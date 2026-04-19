@@ -7,7 +7,7 @@ on:
 jobs:
   release-readiness:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -30,4 +30,6 @@ jobs:
         run: bun run typecheck
 
       - name: Packed tarball smoke
+        env:
+          SMOKE_ELECTRON_VERSIONS: 30.5.1,35.7.5,41.2.1
         run: bun run smoke:pack

@@ -313,7 +313,9 @@ Electron apps with multiple `webContents` often scatter DevTools windows across 
 
 - v1 targets Electron 30+.
 
-- Older Electron versions are out of scope for the initial release.
+- Current package support is intended for Electron 30.x through 41.x.
+
+- Electron 29.x and earlier are out of scope for the initial release.
 
 - v1 targets Windows, macOS, and Linux on a best-effort parity basis.
 

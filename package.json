@@ -41,7 +41,7 @@
   },
   "packageManager": "bun@1.3.7",
   "peerDependencies": {
-    "electron": ">=41 <42"
+    "electron": ">=30 <42"
   },
   "scripts": {
     "clean": "rimraf dist",
@@ -61,7 +61,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.6.0",
     "@vitejs/plugin-vue": "^6.0.5",
-    "electron": "^41.0.2",
+    "electron": "30.5.1",
     "eslint": "^10.0.3",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-vue": "^10.8.0",
