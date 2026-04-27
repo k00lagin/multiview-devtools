@@ -150,7 +150,7 @@ async function runSmoke(mode, loadPackage) {
     currentManager = manager;
 
     manager.show();
-    manager.registerWebContents(view, {
+    manager.registerTarget(view, {
       title: 'fixture:target',
       type: 'web-contents-view',
     });

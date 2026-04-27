@@ -169,11 +169,11 @@ async function createDevSandbox() {
 
   manager.show();
 
-  manager.registerWebContents(leftView, {
+  manager.registerTarget(leftView, {
     title: 'app:left',
     type: 'web-contents-view',
   });
-  manager.registerWebContents(rightView, {
+  manager.registerTarget(rightView, {
     title: 'app:right',
     type: 'web-contents-view',
   });

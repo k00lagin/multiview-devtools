@@ -35,7 +35,6 @@ interface ManagedTargetRecord {
   webContents: WebContents;
   meta: TargetMeta;
   autoDetected: boolean;
-  includeSelf: boolean;
   cleanup: Array<() => void>;
   firstLoaded: boolean;
   pendingOpen: boolean;
@@ -183,28 +182,21 @@ function buildDefaultMeta(webContents: WebContents): TargetMeta {
   };
 }
 
-function buildTargetContext(
-  webContents: WebContents,
-  autoDetected: boolean,
-  includeSelf: boolean,
-): TargetContext {
+function buildTargetContext(webContents: WebContents, autoDetected: boolean): TargetContext {
   return {
     webContents,
     runtimeId: webContents.id,
     autoDetected,
-    includeSelf,
   };
 }
 
 function buildResolvedMeta(
   webContents: WebContents,
   autoDetected: boolean,
-  includeSelf: boolean,
   overrides: Partial<TargetMeta> = {},
 ) {
   const resolverResult =
-    state.options.resolveTargetMeta?.(buildTargetContext(webContents, autoDetected, includeSelf)) ??
-    {};
+    state.options.resolveTargetMeta?.(buildTargetContext(webContents, autoDetected)) ?? {};
 
   return {
     ...buildDefaultMeta(webContents),
@@ -465,7 +457,7 @@ function syncWindowBoundsIntoState() {
 function rememberInternalWebContents(id: number) {
   state.internalWebContentsIds.add(id);
   if (!state.options.includeSelf) {
-    unregisterWebContents(id, false);
+    unregisterTarget(id, false);
   }
 }
 
@@ -817,7 +809,7 @@ function setMeta(target: TargetLike, meta: Partial<TargetMeta>) {
   broadcastSnapshot();
 }
 
-function registerWebContents(
+function registerTarget(
   target: WebContents | WebContentsView,
   meta: Partial<TargetMeta> = {},
   autoDetected = false,
@@ -827,8 +819,7 @@ function registerWebContents(
     return undefined;
   }
 
-  const includeSelf = Boolean(state.options.includeSelf);
-  if (state.internalWebContentsIds.has(webContents.id) && !includeSelf) {
+  if (state.internalWebContentsIds.has(webContents.id) && !state.options.includeSelf) {
     return undefined;
   }
 
@@ -838,7 +829,7 @@ function registerWebContents(
   if (existing) {
     existing.meta = {
       ...existing.meta,
-      ...buildResolvedMeta(webContents, autoDetected, includeSelf, meta),
+      ...buildResolvedMeta(webContents, autoDetected, meta),
     };
     existing.autoDetected = existing.autoDetected && autoDetected;
     broadcastSnapshot();
@@ -848,9 +839,8 @@ function registerWebContents(
   const targetRecord: ManagedTargetRecord = {
     runtimeId: webContents.id,
     webContents,
-    meta: buildResolvedMeta(webContents, autoDetected, includeSelf, meta),
+    meta: buildResolvedMeta(webContents, autoDetected, meta),
     autoDetected,
-    includeSelf,
     cleanup: [],
     firstLoaded: Boolean(safeGetUrl(webContents)),
     pendingOpen: false,
@@ -858,17 +848,12 @@ function registerWebContents(
 
   const syncMetadata = () => {
     if (autoDetected && isDevToolsRelatedWebContents(webContents)) {
-      unregisterWebContents(webContents.id, false);
+      unregisterTarget(webContents.id, false);
       return;
     }
 
     targetRecord.firstLoaded = Boolean(safeGetUrl(webContents));
-    targetRecord.meta = buildResolvedMeta(
-      webContents,
-      autoDetected,
-      includeSelf,
-      targetRecord.meta,
-    );
+    targetRecord.meta = buildResolvedMeta(webContents, autoDetected, targetRecord.meta);
     broadcastSnapshot();
 
     if (targetRecord.pendingOpen && state.activeTabId === webContents.id) {
@@ -877,7 +862,7 @@ function registerWebContents(
     }
   };
 
-  const onDestroyed = () => unregisterWebContents(webContents.id, autoDetected);
+  const onDestroyed = () => unregisterTarget(webContents.id, autoDetected);
 
   webContents.on('did-navigate', syncMetadata);
   webContents.on('did-navigate-in-page', syncMetadata);
@@ -893,7 +878,7 @@ function registerWebContents(
   return webContents.id;
 }
 
-function unregisterWebContents(target: TargetLike, suppress = true) {
+function unregisterTarget(target: TargetLike, suppress = true) {
   const runtimeId = toRuntimeTargetId(target);
   if (runtimeId == null) {
     return;
@@ -929,12 +914,11 @@ function unregisterWebContents(target: TargetLike, suppress = true) {
 }
 
 function shouldManageWebContents(webContents: WebContents) {
-  const includeSelf = Boolean(state.options.includeSelf);
   if (webContents.isDestroyed()) {
     return false;
   }
 
-  if (state.internalWebContentsIds.has(webContents.id) && !includeSelf) {
+  if (state.internalWebContentsIds.has(webContents.id) && !state.options.includeSelf) {
     return false;
   }
 
@@ -946,10 +930,7 @@ function shouldManageWebContents(webContents: WebContents) {
     return false;
   }
 
-  return (
-    state.options.shouldManageWebContents?.(buildTargetContext(webContents, true, includeSelf)) ??
-    true
-  );
+  return state.options.shouldManageWebContents?.(buildTargetContext(webContents, true)) ?? true;
 }
 
 function refreshTargets() {
@@ -958,7 +939,7 @@ function refreshTargets() {
       continue;
     }
 
-    registerWebContents(webContents, {}, true);
+    registerTarget(webContents, {}, true);
   }
 
   broadcastSnapshot();
@@ -969,7 +950,7 @@ function onWebContentsCreated(_event: unknown, webContents: WebContents) {
     return;
   }
 
-  registerWebContents(webContents, {}, true);
+  registerTarget(webContents, {}, true);
 }
 
 async function restorePersistedUiState() {
@@ -1038,7 +1019,7 @@ function createManagerWindow() {
   managerWindow.contentView.addChildView(managerOverlayView, 2);
 
   if (state.options.includeSelf) {
-    registerWebContents(
+    registerTarget(
       managerUiView,
       {
         title: 'manager:toolbar',
@@ -1046,7 +1027,7 @@ function createManagerWindow() {
       },
       false,
     );
-    registerWebContents(
+    registerTarget(
       managerOverlayView,
       {
         title: 'manager:overlay',
@@ -1161,10 +1142,8 @@ function buildApi(): DevToolsManager {
     refreshTargets,
     listTargets,
     listTabs,
-    registerWebContents,
-    unregisterWebContents(target) {
-      unregisterWebContents(target, true);
-    },
+    registerTarget,
+    unregisterTarget: (target) => unregisterTarget(target, true),
     openTab,
     activateTab,
     unloadTab,
@@ -1192,11 +1171,7 @@ export function initDevToolsManager(options: InitDevToolsManagerOptions = {}): D
 
     if (options.autoDetect !== false && !state.autodetectBound) {
       state.autodetectBound = true;
-      (
-        app as unknown as {
-          on(event: 'web-contents-created', listener: typeof onWebContentsCreated): void;
-        }
-      ).on('web-contents-created', onWebContentsCreated);
+      app.on('web-contents-created', onWebContentsCreated);
       refreshTargets();
     }
 

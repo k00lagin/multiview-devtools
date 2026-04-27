@@ -73,7 +73,6 @@ interface TargetContext {
   webContents: WebContents;
   runtimeId: RuntimeTargetId;
   autoDetected: boolean;
-  includeSelf: boolean;
 }
 
 interface PersistedUiState {
@@ -91,7 +90,7 @@ interface InitDevToolsManagerOptions {
   autoShow?: boolean;
   includeSelf?: boolean;
   shouldManageWebContents?: (ctx: TargetContext) => boolean;
-  resolveTargetMeta?: (ctx: TargetContext) => Partial<TargetMeta> | void;
+  resolveTargetMeta?: (ctx: TargetContext) => Partial<TargetMeta> | undefined;
   persistence?: PersistenceAdapter;
 }
 
@@ -119,11 +118,11 @@ interface DevToolsManager {
   listTargets(): ManagerTargetInfo[];
   listTabs(): ManagerTabInfo[];
 
-  registerWebContents(
+  registerTarget(
     target: WebContents | WebContentsView,
     meta?: Partial<TargetMeta>,
   ): RuntimeTargetId | undefined;
-  unregisterWebContents(target: TargetLike): void;
+  unregisterTarget(target: TargetLike): void;
 
   openTab(target: TargetLike): void;
   activateTab(target: TargetLike): void;
@@ -143,8 +142,8 @@ declare function initDevToolsManager(options?: InitDevToolsManagerOptions): DevT
 
 Behavioral notes:
 
-- Manual `registerWebContents(...)` is an explicit override and is not re-filtered by autodetect rules.
-- Manual `unregisterWebContents(...)` suppresses rediscovery for the current runtime unless the target is explicitly re-registered.
+- Manual `registerTarget(...)` is an explicit override and is not re-filtered by autodetect rules.
+- Manual `unregisterTarget(...)` suppresses rediscovery for the current runtime unless the target is explicitly re-registered.
 - One target may have at most one workspace tab.
 - Re-opening an existing tab activates it and loads it if currently unloaded.
 

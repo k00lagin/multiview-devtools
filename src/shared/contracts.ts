@@ -23,7 +23,6 @@ export interface TargetContext {
   webContents: WebContents;
   runtimeId: RuntimeTargetId;
   autoDetected: boolean;
-  includeSelf: boolean;
 }
 
 export interface PersistedUiState {
@@ -41,7 +40,7 @@ export interface InitDevToolsManagerOptions {
   autoShow?: boolean;
   includeSelf?: boolean;
   shouldManageWebContents?: (ctx: TargetContext) => boolean;
-  resolveTargetMeta?: (ctx: TargetContext) => Partial<TargetMeta> | void;
+  resolveTargetMeta?: (ctx: TargetContext) => Partial<TargetMeta> | undefined;
   persistence?: PersistenceAdapter;
 }
 
@@ -127,11 +126,11 @@ export interface DevToolsManager {
   refreshTargets(): void;
   listTargets(): ManagerTargetInfo[];
   listTabs(): ManagerTabInfo[];
-  registerWebContents(
+  registerTarget(
     target: WebContents | WebContentsView,
     meta?: Partial<TargetMeta>,
   ): RuntimeTargetId | undefined;
-  unregisterWebContents(target: TargetLike): void;
+  unregisterTarget(target: TargetLike): void;
   openTab(target: TargetLike): void;
   activateTab(target: TargetLike): void;
   unloadTab(target: TargetLike): void;

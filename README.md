@@ -5,93 +5,59 @@ Tabbed DevTools manager for Electron apps that work with multiple `WebContents` 
 ## Requirements
 
 - Node `>=20`
-- Electron `>=30 <42`
+- Electron `>=30 <42` (peer dependency; smoke-tested against `30.5.1`, `35.7.5`, `41.2.1`)
 
 ## Install
 
 ```bash
-npm install multiview-devtools electron@30
+npm install multiview-devtools
+# electron is a peer dependency
 ```
 
 ## Usage
 
-Call `initDevToolsManager()` from the Electron main process:
+Call `initDevToolsManager()` from the Electron main process, after `app.whenReady()`:
 
 ```ts
-import { app, BrowserWindow, WebContentsView } from 'electron';
+import { app } from 'electron';
 import { initDevToolsManager } from 'multiview-devtools';
 
-async function main() {
-  await app.whenReady();
-
-  const window = new BrowserWindow({
-    width: 1280,
-    height: 800,
-  });
-
-  const view = new WebContentsView();
-  window.contentView.addChildView(view);
-  view.setBounds({ x: 0, y: 0, width: 1280, height: 800 });
-
-  await view.webContents.loadURL('https://example.com');
-
-  const manager = initDevToolsManager({
-    autoDetect: true,
-    autoShow: false,
-    resolveTargetMeta({ webContents }) {
-      return {
-        title: webContents.getTitle() || `wc:${webContents.id}`,
-      };
-    },
-  });
-
-  manager.show();
-}
-
-void main();
+app.whenReady().then(() => {
+  initDevToolsManager(); // autodetects existing WebContents and opens the manager window
+});
 ```
+
+`manager.show()`, `manager.toggle()`, and any method that touches windows must be called after `app.whenReady()` resolves.
 
 ## API
 
-`initDevToolsManager(options?)`
+### `initDevToolsManager(options?) => DevToolsManager`
 
 Options:
 
-- `autoDetect`: automatically discover app `webContents`. Default: `true`.
-- `autoShow`: open the manager window on startup. Default: `true`.
-- `includeSelf`: include the manager's own internal views for package development. Default: `false`.
-- `shouldManageWebContents(ctx)`: filter autodetected targets.
-- `resolveTargetMeta(ctx)`: provide custom labels and metadata.
-- `persistence`: custom adapter for loading and saving simple UI state.
+- `autoDetect` (default `true`) — discover existing and future `WebContents` automatically.
+- `autoShow` (default `true`) — open the manager window on startup.
+- `shouldManageWebContents(ctx)` — filter autodetected targets. Receives `{ webContents, runtimeId, autoDetected }`.
+- `resolveTargetMeta(ctx)` — return `Partial<TargetMeta>` to override title/url/etc. shown in the UI.
+- `persistence` — custom adapter `{ load?, save? }` for the UI state (`theme`, `windowBounds`). Defaults to an in-app adapter backed by `app.getPath('userData')`.
+- `includeSelf` (default `false`) — register the manager's own windows as targets. Useful only when debugging the package itself.
 
-Returned manager methods:
+### Manager
 
-- `show()`, `hide()`, `toggle()`
-- `refreshTargets()`
-- `listTargets()`, `listTabs()`
-- `registerWebContents(target, meta?)`
-- `unregisterWebContents(target)`
-- `openTab(target)`, `activateTab(target)`, `unloadTab(target)`, `closeTab(target)`
-- `closeTabsLeftOf(target)`, `closeTabsRightOf(target)`, `closeOtherTabs(target)`
-- `focusSource(target)`
-- `setMeta(target, meta)`
+Methods accepting `target` accept a `WebContents`, a `WebContentsView`, or a numeric runtime id returned from `listTargets()` / `registerTarget()`.
+
+- `show()`, `hide()`, `toggle()` — control the manager window.
+- `listTargets()`, `listTabs()` — current snapshot.
+- `refreshTargets()` — re-scan all `webContents` (only relevant with `autoDetect`).
+- `registerTarget(target, meta?) => runtimeId | undefined` — register a target manually. Returns `undefined` if the `WebContents` is destroyed or filtered out.
+- `unregisterTarget(target)` — remove a target and suppress re-autodetection until it is registered again.
+- `openTab(target)`, `activateTab(target)`, `unloadTab(target)`, `closeTab(target)`.
+- `closeTabsLeftOf(target)`, `closeTabsRightOf(target)`, `closeOtherTabs(target)`.
+- `focusSource(target)` — focus the owning window and the source `WebContents`.
+- `setMeta(target, meta)` — patch the metadata used by the UI.
 
 ## Notes
 
-- The package is main-process-first. Its renderer UI is bundled internally.
-- The manager is designed around `WebContentsView`-based workflows and Electron's modern multi-view APIs.
-- Internally it depends on `WebContentsView`, `BaseWindow`, and `webContents.setDevToolsWebContents(...)`.
-
-## Compatibility
-
-> Notice: Electron `29.x` and earlier are out of scope.
-
-- Supported package range: Electron `30.x` through `41.x`.
-- Package compatibility is currently constrained to `electron >=30 <42`.
-- Release-readiness smoke tests currently run against Electron `30.5.1`, `35.7.5`, and `41.2.1`.
-
-## Packaging
-
-The package exposes CommonJS plus an ESM compatibility entrypoint; it does not currently ship a separate native ESM build.
-
-Published tarballs include built runtime artifacts from `dist/`, plus this `README.md` and `LICENSE`. Source maps are excluded from the npm package to keep the tarball smaller.
+- Main-process-only. The renderer UI is bundled inside the package.
+- Ships both CJS and ESM-compat entrypoints.
+- Requires `webContents.setDevToolsWebContents(...)`, which is main-process API.
