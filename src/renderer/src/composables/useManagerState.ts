@@ -6,6 +6,7 @@ const emptySnapshot: ManagerSnapshot = {
   targets: [],
   tabs: [],
   activeTabId: null,
+  notices: [],
   uiState: {},
 };
 
@@ -44,6 +45,14 @@ export function useManagerState() {
     await window.multiviewDevtools.closeTab(runtimeId);
   }
 
+  async function moveTab(runtimeId: number, toIndex: number) {
+    await window.multiviewDevtools.moveTab(runtimeId, toIndex);
+  }
+
+  async function dismissNotice(id: number) {
+    await window.multiviewDevtools.dismissNotice(id);
+  }
+
   async function closeTabsLeftOf(runtimeId: number) {
     await window.multiviewDevtools.closeTabsLeftOf(runtimeId);
   }
@@ -71,6 +80,8 @@ export function useManagerState() {
     activateTab,
     unloadTab,
     closeTab,
+    moveTab,
+    dismissNotice,
     closeTabsLeftOf,
     closeTabsRightOf,
     closeOtherTabs,

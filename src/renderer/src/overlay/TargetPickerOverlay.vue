@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 
 import type { ManagerTargetInfo, TargetPickerOverlayMenu } from '@shared/contracts';
 
@@ -14,6 +14,8 @@ const emit = defineEmits<{
 
 const searchQuery = ref('');
 const searchInput = ref<HTMLInputElement | null>(null);
+const listElement = ref<HTMLElement | null>(null);
+const highlightedIndex = ref(0);
 
 const openTabIds = computed(() => new Set(props.menu.openTabIds));
 const hasTargets = computed(() => props.menu.targets.length > 0);
@@ -43,6 +45,12 @@ const filteredTargets = computed(() => {
 
   return sortedTargets.value.filter((target) => buildSearchText(target).includes(query));
 });
+
+const highlightedTarget = computed(() => filteredTargets.value[highlightedIndex.value]);
+
+function optionId(target: ManagerTargetInfo) {
+  return `target-option-${target.runtimeId}`;
+}
 
 function targetTrail(target: ManagerTargetInfo) {
   const parts = [`#${target.runtimeId}`];
@@ -74,6 +82,47 @@ function targetSubtitle(target: ManagerTargetInfo) {
   );
 }
 
+function moveHighlight(step: 1 | -1) {
+  const count = filteredTargets.value.length;
+  if (!count) {
+    return;
+  }
+
+  highlightedIndex.value = (highlightedIndex.value + step + count) % count;
+  void nextTick(() => {
+    listElement.value
+      ?.querySelector('.overlay-target--highlighted')
+      ?.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+function onSearchKeydown(event: KeyboardEvent) {
+  if (event.isComposing) {
+    return;
+  }
+
+  switch (event.key) {
+    case 'ArrowDown':
+      event.preventDefault();
+      moveHighlight(1);
+      break;
+    case 'ArrowUp':
+      event.preventDefault();
+      moveHighlight(-1);
+      break;
+    case 'Enter':
+      event.preventDefault();
+      if (highlightedTarget.value) {
+        emit('selectRuntime', highlightedTarget.value.runtimeId);
+      }
+      break;
+  }
+}
+
+watch(searchQuery, () => {
+  highlightedIndex.value = 0;
+});
+
 onMounted(() => {
   void nextTick(() => {
     searchInput.value?.focus();
@@ -95,16 +144,27 @@ onMounted(() => {
         v-model="searchQuery"
         class="overlay-search__input"
         type="search"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded="true"
+        aria-controls="target-picker-list"
+        :aria-activedescendant="highlightedTarget ? optionId(highlightedTarget) : undefined"
         placeholder="Search by title, id, hostname, or URL"
+        @keydown="onSearchKeydown"
       />
     </div>
 
-    <div class="overlay-list">
+    <div id="target-picker-list" ref="listElement" class="overlay-list" role="listbox">
       <button
-        v-for="target in filteredTargets"
+        v-for="(target, index) in filteredTargets"
+        :id="optionId(target)"
         :key="target.runtimeId"
-        class="overlay-target"
+        :class="['overlay-target', index === highlightedIndex && 'overlay-target--highlighted']"
         type="button"
+        role="option"
+        tabindex="-1"
+        :aria-selected="index === highlightedIndex"
+        @mousemove="highlightedIndex = index"
         @click="emit('selectRuntime', target.runtimeId)"
       >
         <div class="overlay-target__row">
@@ -133,5 +193,11 @@ onMounted(() => {
         No targets match this query.
       </div>
     </div>
+
+    <footer v-if="filteredTargets.length" class="overlay-card__footer" aria-hidden="true">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>Enter</kbd> open</span>
+      <span><kbd>Esc</kbd> close</span>
+    </footer>
   </section>
 </template>

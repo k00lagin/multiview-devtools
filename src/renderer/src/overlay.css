@@ -136,7 +136,7 @@ input {
   border-top: 1px solid var(--border);
 }
 
-.overlay-target:hover,
+.overlay-target--highlighted,
 .overlay-target:focus-visible {
   background: var(--accent-soft);
   outline: none;
@@ -178,6 +178,28 @@ input {
   color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
+}
+
+.overlay-card__footer {
+  padding: 6px 12px;
+  display: flex;
+  gap: 14px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 16px;
+  margin-right: 3px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font: inherit;
+  text-align: center;
 }
 
 .overlay-menu {

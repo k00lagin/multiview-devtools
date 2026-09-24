@@ -8,12 +8,13 @@ import {
   ipcMain,
   webContents as webContentsModule,
 } from 'electron';
-import type { Rectangle, WebContents } from 'electron';
+import type { Event as ElectronEvent, Input, Rectangle, WebContents } from 'electron';
 
-import { IPC_CHANNELS } from '../shared/ipc';
+import { IPC_CHANNELS, type ManagerCommand } from '../shared/ipc';
 import type {
   DevToolsManager,
   InitDevToolsManagerOptions,
+  ManagerNotice,
   ManagerOverlayState,
   ManagerSnapshot,
   ManagerTabInfo,
@@ -23,6 +24,7 @@ import type {
   PersistedUiState,
   RuntimeTargetId,
   TabContextMenuOverlayMenu,
+  TabStatus,
   TargetContext,
   TargetLike,
   TargetMeta,
@@ -44,7 +46,15 @@ interface ManagedTabRecord {
   runtimeId: RuntimeTargetId;
   view: WebContentsView | null;
   loaded: boolean;
+  frontendLoading: boolean;
+  error: string | null;
 }
+
+type ShortcutAction =
+  | { kind: 'open-target-picker' }
+  | { kind: 'close-active' }
+  | { kind: 'cycle'; direction: 1 | -1 }
+  | { kind: 'select'; position: number };
 
 interface InternalState {
   initialized: boolean;
@@ -56,6 +66,8 @@ interface InternalState {
   tabs: Map<RuntimeTargetId, ManagedTabRecord>;
   tabOrder: RuntimeTargetId[];
   activeTabId: RuntimeTargetId | null;
+  notices: ManagerNotice[];
+  lastNoticeId: number;
   suppressedTargets: Set<RuntimeTargetId>;
   internalWebContentsIds: Set<number>;
   persistedUiState: PersistedUiState;
@@ -67,6 +79,8 @@ interface InternalState {
 }
 
 const MANAGER_HEADER_HEIGHT = 26;
+const MAX_NOTICES = 3;
+const NOTICE_TIMEOUT_MS = { info: 6000, error: 10000 } as const;
 const DEBUGGER_PROTOCOL_VERSION = '1.3';
 const CLOSED_OVERLAY_STATE: ManagerOverlayState = {
   open: false,
@@ -82,6 +96,8 @@ const state: InternalState = {
   tabs: new Map(),
   tabOrder: [],
   activeTabId: null,
+  notices: [],
+  lastNoticeId: 0,
   suppressedTargets: new Set(),
   internalWebContentsIds: new Set(),
   persistedUiState: {},
@@ -216,6 +232,26 @@ function listTargets(): ManagerTargetInfo[] {
     .sort((left, right) => left.runtimeId - right.runtimeId);
 }
 
+function getTabStatus(tab: ManagedTabRecord, target: ManagedTargetRecord): TabStatus {
+  if (tab.error) {
+    return 'error';
+  }
+
+  if (target.pendingOpen || tab.frontendLoading) {
+    return 'loading';
+  }
+
+  return tab.view ? 'ready' : 'unloaded';
+}
+
+function getTargetLabel(runtimeId: RuntimeTargetId) {
+  return state.targets.get(runtimeId)?.meta.title?.trim() || `wc:${runtimeId}`;
+}
+
+function describeError(error: unknown) {
+  return error instanceof Error && error.message ? error.message : String(error);
+}
+
 function listTabs(): ManagerTabInfo[] {
   return state.tabOrder
     .map((runtimeId) => {
@@ -229,6 +265,8 @@ function listTabs(): ManagerTabInfo[] {
         runtimeId,
         loaded: tab.loaded,
         active: state.activeTabId === runtimeId,
+        status: getTabStatus(tab, target),
+        ...(tab.error ? { error: tab.error } : {}),
         meta: target.meta,
       } satisfies ManagerTabInfo;
     })
@@ -240,8 +278,34 @@ function buildSnapshot(): ManagerSnapshot {
     targets: listTargets(),
     tabs: listTabs(),
     activeTabId: state.activeTabId,
+    notices: state.notices,
     uiState: state.persistedUiState,
   };
+}
+
+/** Queues a short toolbar message. Callers broadcast the snapshot themselves. */
+function pushNotice(tone: ManagerNotice['tone'], message: string, runtimeId?: RuntimeTargetId) {
+  const id = ++state.lastNoticeId;
+  const notice: ManagerNotice =
+    runtimeId == null ? { id, tone, message } : { id, tone, message, runtimeId };
+  state.notices = [...state.notices, notice].slice(-MAX_NOTICES);
+  setTimeout(() => dismissNotice(id), NOTICE_TIMEOUT_MS[tone]).unref?.();
+}
+
+/** Drops a tab's error notices once they no longer apply (the tab recovered or was closed). */
+function clearTabErrorNotices(runtimeId: RuntimeTargetId) {
+  state.notices = state.notices.filter(
+    (notice) => !(notice.tone === 'error' && notice.runtimeId === runtimeId),
+  );
+}
+
+function dismissNotice(id: number) {
+  if (!state.notices.some((notice) => notice.id === id)) {
+    return;
+  }
+
+  state.notices = state.notices.filter((notice) => notice.id !== id);
+  broadcastSnapshot();
 }
 
 function getResolvedTheme(theme = state.persistedUiState.theme): ThemeMode {
@@ -468,11 +532,16 @@ function closeOverlay(options: { restoreFocus?: boolean } = {}) {
   layoutActiveTabView();
 
   if (options.restoreFocus !== false) {
-    try {
-      state.managerUiView?.webContents.focus();
-    } catch {
-      // Best-effort focus restore.
-    }
+    focusActiveTabContents();
+  }
+}
+
+function focusActiveTabContents() {
+  const activeView = state.activeTabId == null ? null : state.tabs.get(state.activeTabId)?.view;
+  try {
+    (activeView?.webContents ?? state.managerUiView?.webContents)?.focus();
+  } catch {
+    // Best-effort focus restore.
   }
 }
 
@@ -492,6 +561,101 @@ function openOverlay(request: OverlayTriggerRequest) {
     state.managerOverlayView?.webContents.focus();
   } catch {
     // Best-effort focus only.
+  }
+}
+
+function resolveShortcut(input: Input): ShortcutAction | null {
+  if (input.type !== 'keyDown' || input.alt || !(input.control || input.meta)) {
+    return null;
+  }
+
+  // `code` is layout-independent, so shortcuts also work with non-Latin keyboard layouts.
+  switch (input.code) {
+    case 'Tab':
+      return { kind: 'cycle', direction: input.shift ? -1 : 1 };
+    case 'PageDown':
+      return input.shift ? null : { kind: 'cycle', direction: 1 };
+    case 'PageUp':
+      return input.shift ? null : { kind: 'cycle', direction: -1 };
+    case 'KeyT':
+    case 'KeyK':
+      return input.shift ? null : { kind: 'open-target-picker' };
+    case 'KeyW':
+      return input.shift ? null : { kind: 'close-active' };
+  }
+
+  const digit = /^Digit([1-9])$/.exec(input.code);
+  return digit && !input.shift ? { kind: 'select', position: Number(digit[1]) } : null;
+}
+
+function activateTabFromShortcut(runtimeId: RuntimeTargetId | undefined) {
+  if (runtimeId == null) {
+    return false;
+  }
+
+  activateTab(runtimeId);
+  focusActiveTabContents();
+  return true;
+}
+
+/** Runs a shortcut and reports whether it did anything, so unused keys still reach DevTools. */
+function runShortcut(shortcut: ShortcutAction) {
+  const { tabOrder, activeTabId } = state;
+
+  switch (shortcut.kind) {
+    case 'open-target-picker': {
+      const webContents = state.managerUiView?.webContents;
+      if (!webContents || webContents.isDestroyed()) {
+        return false;
+      }
+
+      webContents.send(IPC_CHANNELS.command, 'open-target-picker' satisfies ManagerCommand);
+      return true;
+    }
+    case 'close-active':
+      if (activeTabId == null) {
+        return false;
+      }
+
+      closeTab(activeTabId);
+      focusActiveTabContents();
+      return true;
+    case 'cycle': {
+      if (!tabOrder.length) {
+        return false;
+      }
+
+      const index = activeTabId == null ? -1 : tabOrder.indexOf(activeTabId);
+      const nextIndex =
+        index < 0 ? 0 : (index + shortcut.direction + tabOrder.length) % tabOrder.length;
+      return activateTabFromShortcut(tabOrder[nextIndex]);
+    }
+    case 'select':
+      // Like browsers, the last digit always jumps to the last tab.
+      return activateTabFromShortcut(
+        shortcut.position === 9 ? tabOrder.at(-1) : tabOrder[shortcut.position - 1],
+      );
+  }
+}
+
+function handleShortcutInput(event: ElectronEvent, input: Input) {
+  const shortcut = resolveShortcut(input);
+  if (shortcut && runShortcut(shortcut)) {
+    event.preventDefault();
+  }
+}
+
+function handleOverlayShortcutInput(event: ElectronEvent, input: Input) {
+  const shortcut = resolveShortcut(input);
+  if (!shortcut) {
+    return;
+  }
+
+  event.preventDefault();
+  const pickerWasOpen = state.overlayState.menu?.kind === 'target-picker';
+  closeOverlay();
+  if (!(pickerWasOpen && shortcut.kind === 'open-target-picker')) {
+    runShortcut(shortcut);
   }
 }
 
@@ -546,11 +710,12 @@ function layoutActiveTabView() {
   }
 }
 
+/** Returns the tab's DevTools view, creating it if needed. Throws when attaching fails. */
 function ensureTabView(runtimeId: RuntimeTargetId) {
   const target = state.targets.get(runtimeId);
   const tab = state.tabs.get(runtimeId);
   if (!target || !tab) {
-    return undefined;
+    throw new Error('target is no longer managed');
   }
 
   if (tab.view && !tab.view.webContents.isDestroyed()) {
@@ -564,23 +729,46 @@ function ensureTabView(runtimeId: RuntimeTargetId) {
       nodeIntegration: false,
     },
   });
+  const devToolsContents = devToolsView.webContents;
+  const isCurrentView = () => state.tabs.get(runtimeId)?.view === devToolsView;
   const syncTheme = () => {
-    void applyThemeToDevToolsWebContents(devToolsView.webContents);
+    void applyThemeToDevToolsWebContents(devToolsContents);
   };
 
-  rememberInternalWebContents(devToolsView.webContents.id);
+  rememberInternalWebContents(devToolsContents.id);
 
   try {
-    target.webContents.setDevToolsWebContents(devToolsView.webContents);
-  } catch {
-    return undefined;
+    target.webContents.setDevToolsWebContents(devToolsContents);
+  } catch (error) {
+    devToolsContents.close();
+    throw error;
   }
 
   state.managerWindow?.contentView.addChildView(devToolsView, 1);
-  devToolsView.webContents.on('did-finish-load', syncTheme);
-  devToolsView.webContents.on('did-navigate-in-page', syncTheme);
+  devToolsContents.on('did-finish-load', () => {
+    syncTheme();
+    const currentTab = state.tabs.get(runtimeId);
+    if (currentTab?.view === devToolsView && currentTab.frontendLoading) {
+      currentTab.frontendLoading = false;
+      broadcastSnapshot();
+    }
+  });
+  devToolsContents.on('did-navigate-in-page', syncTheme);
+  devToolsContents.on('did-fail-load', (_event, errorCode, errorDescription, _url, isMainFrame) => {
+    // -3 is ERR_ABORTED, which also fires when a load is superseded by another navigation.
+    if (isMainFrame && errorCode !== -3 && isCurrentView()) {
+      failTab(runtimeId, `DevTools failed to load (${errorDescription || errorCode})`);
+    }
+  });
+  devToolsContents.on('render-process-gone', (_event, details) => {
+    if (isCurrentView()) {
+      failTab(runtimeId, `DevTools crashed (${details.reason})`);
+    }
+  });
+  devToolsContents.on('before-input-event', handleShortcutInput);
   tab.view = devToolsView;
   tab.loaded = true;
+  tab.frontendLoading = true;
   syncTheme();
 
   return devToolsView;
@@ -592,59 +780,60 @@ function destroyTabView(runtimeId: RuntimeTargetId) {
     return;
   }
 
+  // Detach first so events fired while closing are ignored by the view's handlers.
+  const view = tab.view;
+  tab.view = null;
+  tab.loaded = false;
+  tab.frontendLoading = false;
+
   try {
-    tab.view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
-    tab.view.webContents.close();
+    view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+    view.webContents.close();
   } catch {
     // Best-effort cleanup.
   }
-
-  tab.view = null;
-  tab.loaded = false;
 }
 
-function openTab(target: TargetLike) {
-  const runtimeId = toRuntimeTargetId(target);
-  if (runtimeId == null) {
+function failTab(runtimeId: RuntimeTargetId, message: string) {
+  const tab = state.tabs.get(runtimeId);
+  if (!tab) {
     return;
   }
 
+  destroyTabView(runtimeId);
+  tab.error = message;
+  pushNotice('error', `${getTargetLabel(runtimeId)}: ${message}`, runtimeId);
+  broadcastSnapshot();
+  layoutActiveTabView();
+}
+
+/**
+ * Attaches the DevTools frontend for an existing tab, or defers it until the target has loaded.
+ * Returns false and records the reason on the tab when attaching fails.
+ */
+function loadTabView(runtimeId: RuntimeTargetId) {
   const targetRecord = state.targets.get(runtimeId);
-  if (!targetRecord || targetRecord.webContents.isDestroyed()) {
-    return;
+  const tab = state.tabs.get(runtimeId);
+  if (!targetRecord || !tab) {
+    return false;
   }
 
-  const existingTab = state.tabs.get(runtimeId);
-  const previousActiveTabId = state.activeTabId;
-  if (!existingTab) {
-    state.tabs.set(runtimeId, {
-      runtimeId,
-      view: null,
-      loaded: false,
-    });
-    state.tabOrder.push(runtimeId);
-  }
-
-  state.activeTabId = runtimeId;
-
+  tab.error = null;
   if (!targetRecord.firstLoaded) {
     targetRecord.pendingOpen = true;
-    broadcastSnapshot();
-    layoutActiveTabView();
-    return;
+    return true;
   }
 
-  const view = ensureTabView(runtimeId);
-  if (!view) {
-    if (!existingTab) {
-      state.tabs.delete(runtimeId);
-      state.tabOrder = state.tabOrder.filter((id) => id !== runtimeId);
-      state.activeTabId = previousActiveTabId ?? null;
-      broadcastSnapshot();
-      layoutActiveTabView();
-    }
-    return;
+  targetRecord.pendingOpen = false;
+
+  try {
+    ensureTabView(runtimeId);
+  } catch (error) {
+    tab.error = `Couldn't attach DevTools (${describeError(error)})`;
+    return false;
   }
+
+  clearTabErrorNotices(runtimeId);
 
   try {
     targetRecord.webContents.openDevTools({ mode: 'detach' });
@@ -652,9 +841,45 @@ function openTab(target: TargetLike) {
     // Electron opens the frontend against the custom WebContents when available.
   }
 
-  const tab = state.tabs.get(runtimeId);
-  if (tab) {
-    tab.loaded = true;
+  return true;
+}
+
+function openTab(target: TargetLike) {
+  const runtimeId = toRuntimeTargetId(target);
+  const targetRecord = runtimeId == null ? undefined : state.targets.get(runtimeId);
+  if (runtimeId == null || !targetRecord || targetRecord.webContents.isDestroyed()) {
+    pushNotice('error', "Can't open DevTools: the target is no longer available.");
+    broadcastSnapshot();
+    return;
+  }
+
+  const isNewTab = !state.tabs.has(runtimeId);
+  const previousActiveTabId = state.activeTabId;
+  if (isNewTab) {
+    state.tabs.set(runtimeId, {
+      runtimeId,
+      view: null,
+      loaded: false,
+      frontendLoading: false,
+      error: null,
+    });
+    state.tabOrder.push(runtimeId);
+  }
+
+  state.activeTabId = runtimeId;
+
+  if (!loadTabView(runtimeId)) {
+    pushNotice(
+      'error',
+      `${getTargetLabel(runtimeId)}: ${state.tabs.get(runtimeId)?.error}`,
+      runtimeId,
+    );
+    // PRD: a failed open must not leave a new tab behind. Existing tabs keep the error state.
+    if (isNewTab) {
+      state.tabs.delete(runtimeId);
+      state.tabOrder = state.tabOrder.filter((id) => id !== runtimeId);
+      state.activeTabId = previousActiveTabId;
+    }
   }
 
   broadcastSnapshot();
@@ -663,20 +888,28 @@ function openTab(target: TargetLike) {
 
 function activateTab(target: TargetLike) {
   openTab(target);
-  const runtimeId = toRuntimeTargetId(target);
-  if (runtimeId == null) {
+}
+
+function moveTab(runtimeId: RuntimeTargetId, toIndex: number) {
+  if (!state.tabs.has(runtimeId) || !Number.isFinite(toIndex)) {
     return;
   }
 
-  state.activeTabId = runtimeId;
+  const nextOrder = state.tabOrder.filter((id) => id !== runtimeId);
+  nextOrder.splice(Math.max(0, Math.min(nextOrder.length, Math.trunc(toIndex))), 0, runtimeId);
+  state.tabOrder = nextOrder;
   broadcastSnapshot();
-  layoutActiveTabView();
 }
 
 function unloadTab(target: TargetLike) {
   const runtimeId = toRuntimeTargetId(target);
   if (runtimeId == null) {
     return;
+  }
+
+  const targetRecord = state.targets.get(runtimeId);
+  if (targetRecord) {
+    targetRecord.pendingOpen = false;
   }
 
   destroyTabView(runtimeId);
@@ -695,8 +928,14 @@ function closeTabsByIds(
 
   const activeRemoved = state.activeTabId != null && idsToClose.includes(state.activeTabId);
   for (const runtimeId of idsToClose) {
+    const targetRecord = state.targets.get(runtimeId);
+    if (targetRecord) {
+      targetRecord.pendingOpen = false;
+    }
+
     destroyTabView(runtimeId);
     state.tabs.delete(runtimeId);
+    clearTabErrorNotices(runtimeId);
   }
 
   state.tabOrder = state.tabOrder.filter((runtimeId) => !idsToClose.includes(runtimeId));
@@ -856,13 +1095,29 @@ function registerTarget(
     targetRecord.meta = buildResolvedMeta(webContents, autoDetected, targetRecord.meta);
     broadcastSnapshot();
 
-    if (targetRecord.pendingOpen && state.activeTabId === webContents.id) {
-      targetRecord.pendingOpen = false;
-      openTab(webContents.id);
+    if (targetRecord.pendingOpen && targetRecord.firstLoaded) {
+      if (!loadTabView(targetRecord.runtimeId)) {
+        const error = state.tabs.get(targetRecord.runtimeId)?.error;
+        pushNotice(
+          'error',
+          `${getTargetLabel(targetRecord.runtimeId)}: ${error}`,
+          targetRecord.runtimeId,
+        );
+      }
+
+      broadcastSnapshot();
+      layoutActiveTabView();
     }
   };
 
-  const onDestroyed = () => unregisterTarget(webContents.id, autoDetected);
+  const onDestroyed = () => {
+    if (state.tabs.has(targetRecord.runtimeId)) {
+      const label = getTargetLabel(targetRecord.runtimeId);
+      pushNotice('info', `Closed "${label}": its webContents was destroyed.`);
+    }
+
+    unregisterTarget(targetRecord.runtimeId, autoDetected);
+  };
 
   webContents.on('did-navigate', syncMetadata);
   webContents.on('did-navigate-in-page', syncMetadata);
@@ -1055,6 +1310,8 @@ function createManagerWindow() {
     state.overlayState = CLOSED_OVERLAY_STATE;
   });
 
+  managerUiView.webContents.on('before-input-event', handleShortcutInput);
+  managerOverlayView.webContents.on('before-input-event', handleOverlayShortcutInput);
   managerUiView.webContents.on('did-finish-load', () => {
     managerUiView.webContents.send(IPC_CHANNELS.stateChanged, buildSnapshot());
     relayout();
@@ -1093,6 +1350,9 @@ function wireIpc() {
   ipcMain.handle(IPC_CHANNELS.closeTab, (_event: unknown, runtimeId: number) =>
     closeTab(runtimeId),
   );
+  ipcMain.handle(IPC_CHANNELS.moveTab, (_event: unknown, runtimeId: number, toIndex: number) =>
+    moveTab(runtimeId, toIndex),
+  );
   ipcMain.handle(IPC_CHANNELS.closeTabsLeftOf, (_event: unknown, runtimeId: number) =>
     closeTabsLeftOf(runtimeId),
   );
@@ -1114,6 +1374,7 @@ function wireIpc() {
     schedulePersistenceSave();
     broadcastSnapshot();
   });
+  ipcMain.handle(IPC_CHANNELS.dismissNotice, (_event: unknown, id: number) => dismissNotice(id));
   ipcMain.handle(IPC_CHANNELS.openOverlay, (_event: unknown, request: OverlayTriggerRequest) =>
     openOverlay(request),
   );

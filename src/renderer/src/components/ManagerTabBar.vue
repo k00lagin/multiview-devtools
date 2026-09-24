@@ -37,6 +37,23 @@ let scrollbarDragStartScrollLeft = 0;
 const SCROLLBAR_TRACK_END_INSET = 10;
 const MIN_SCROLLBAR_THUMB_WIDTH = 28;
 
+function tabTooltip(tab: ManagerTabInfo) {
+  const lines = [tab.meta.title ?? `wc:${tab.runtimeId}`];
+  if (tab.meta.url) {
+    lines.push(tab.meta.url);
+  }
+
+  if (tab.status === 'error') {
+    lines.push(`${tab.error ?? 'DevTools failed to open'}. Click to retry.`);
+  } else if (tab.status === 'loading') {
+    lines.push('Attaching DevTools…');
+  } else if (tab.status === 'unloaded') {
+    lines.push('DevTools unloaded. Click to reload.');
+  }
+
+  return lines.join('\n');
+}
+
 function getTabElements() {
   const container = tabsScroller.value;
   if (!container) {
@@ -483,11 +500,11 @@ watch(
           'tabs__tab',
           {
             'tabs__tab--active': tab.active,
-            'tabs__tab--unloaded': !tab.loaded,
+            'tabs__tab--unloaded': tab.status === 'unloaded',
             'tabs__tab--dragging': draggingIndex === index,
           },
         ]"
-        :title="tab.meta.url ? `${tab.meta.title}\n${tab.meta.url}` : tab.meta.title"
+        :title="tabTooltip(tab)"
         draggable="true"
         :data-id="tab.runtimeId"
         @click="emit('activate', tab.runtimeId)"
@@ -503,6 +520,10 @@ watch(
         @dragend="onDragEnd"
         @drop.stop="onDrop($event)"
       >
+        <span v-if="tab.status === 'loading'" class="spinner" aria-hidden="true" />
+        <svg v-else-if="tab.status === 'error'" class="icon tabs__error-icon" aria-hidden="true">
+          <use href="#icon-error" />
+        </svg>
         <span class="tabs__title">{{ tab.meta.title ?? `wc:${tab.runtimeId}` }}</span>
         <span class="tabs__id">#{{ tab.runtimeId }}</span>
         <button

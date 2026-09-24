@@ -24,6 +24,18 @@
         d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
       />
     </symbol>
+    <symbol id="icon-error" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path
+        fill="currentColor"
+        d="M12 17q.425 0 .713-.288T13 16t-.288-.712T12 15t-.712.288T11 16t.288.713T12 17m-1-4h2V7h-2zm1 9q-2.075 0-3.9-.788t-3.175-2.137T2.788 15.9T2 12t.788-3.9t2.137-3.175T8.1 2.788T12 2t3.9.788t3.175 2.137T21.213 8.1T22 12t-.788 3.9t-2.137 3.175t-3.175 2.138T12 22"
+      />
+    </symbol>
+    <symbol id="icon-info" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path
+        fill="currentColor"
+        d="M11 17h2v-6h-2zm1-8q.425 0 .713-.288T13 8t-.288-.712T12 7t-.712.288T11 8t.288.713T12 9m0 13q-2.075 0-3.9-.788t-3.175-2.137T2.788 15.9T2 12t.788-3.9t2.137-3.175T8.1 2.788T12 2t3.9.788t3.175 2.137T21.213 8.1T22 12t-.788 3.9t-2.137 3.175t-3.175 2.138T12 22"
+      />
+    </symbol>
     <symbol id="icon-plus" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" />
     </symbol>

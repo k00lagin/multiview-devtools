@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 
+import { formatShortcut } from '../shortcuts';
+
 const emit = defineEmits<{
   trigger: [anchorRect: DOMRect];
 }>();
 
 const buttonElement = ref<HTMLButtonElement | null>(null);
+const label = `Open DevTools target (${formatShortcut('T')})`;
 
 function triggerOverlay() {
   const rect = buttonElement.value?.getBoundingClientRect();
@@ -15,6 +18,8 @@ function triggerOverlay() {
 
   emit('trigger', rect);
 }
+
+defineExpose({ trigger: triggerOverlay });
 </script>
 
 <template>
@@ -22,8 +27,8 @@ function triggerOverlay() {
     ref="buttonElement"
     class="btn btn--icon"
     type="button"
-    title="Add tab"
-    aria-label="Add tab"
+    :title="label"
+    :aria-label="label"
     @click="triggerOverlay"
   >
     <svg class="icon">

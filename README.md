@@ -47,7 +47,7 @@ Options:
 Methods accepting `target` accept a `WebContents`, a `WebContentsView`, or a numeric runtime id returned from `listTargets()` / `registerTarget()`.
 
 - `show()`, `hide()`, `toggle()` — control the manager window.
-- `listTargets()`, `listTabs()` — current snapshot.
+- `listTargets()`, `listTabs()` — current snapshot. Tabs are returned in tab-bar order and carry a `status` (`loading`, `ready`, `unloaded`, or `error` with an `error` message).
 - `refreshTargets()` — re-scan all `webContents` (only relevant with `autoDetect`).
 - `registerTarget(target, meta?) => runtimeId | undefined` — register a target manually. Returns `undefined` if the `WebContents` is destroyed or filtered out.
 - `unregisterTarget(target)` — remove a target and suppress re-autodetection until it is registered again.
@@ -55,6 +55,17 @@ Methods accepting `target` accept a `WebContents`, a `WebContentsView`, or a num
 - `closeTabsLeftOf(target)`, `closeTabsRightOf(target)`, `closeOtherTabs(target)`.
 - `focusSource(target)` — focus the owning window and the source `WebContents`.
 - `setMeta(target, meta)` — patch the metadata used by the UI.
+
+## Keyboard shortcuts
+
+Shortcuts work inside the manager window, including while a DevTools tab has focus. Use `Cmd` instead of `Ctrl` on macOS.
+
+- `Ctrl+T` / `Ctrl+K` — open the target picker (`↑`/`↓` to choose, `Enter` to open, `Esc` to close).
+- `Ctrl+W` — close the active tab.
+- `Ctrl+Tab` / `Ctrl+Shift+Tab`, `Ctrl+PageDown` / `Ctrl+PageUp` — next / previous tab.
+- `Ctrl+1` … `Ctrl+8` — go to that tab; `Ctrl+9` — go to the last tab.
+
+These take precedence over DevTools' optional `Ctrl+1…9` panel switching.
 
 ## Notes
 

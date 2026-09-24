@@ -51,17 +51,29 @@ export interface ManagerTargetInfo {
   suppressed?: boolean;
 }
 
+export type TabStatus = 'loading' | 'ready' | 'unloaded' | 'error';
+
 export interface ManagerTabInfo {
   runtimeId: RuntimeTargetId;
   loaded: boolean;
   active: boolean;
+  status: TabStatus;
+  error?: string;
   meta: TargetMeta;
+}
+
+export interface ManagerNotice {
+  id: number;
+  tone: 'info' | 'error';
+  message: string;
+  runtimeId?: RuntimeTargetId;
 }
 
 export interface ManagerSnapshot {
   targets: ManagerTargetInfo[];
   tabs: ManagerTabInfo[];
   activeTabId: RuntimeTargetId | null;
+  notices: ManagerNotice[];
   uiState: PersistedUiState;
 }
 

@@ -1,0 +1,223 @@
+Ревью user-facing API пакета multiview-devtools (v0.1.1)
+=========================================================
+
+Источники: src/index.ts, src/shared/contracts.ts, src/main/manager.ts,
+src/main/persistence.ts, README.md, dist/index.d.ts, package.json.
+
+1. Поверхность публичного API
+-----------------------------
+Из package.json экспортируется единственный entry "." (CJS + ESM + .d.ts).
+Из src/index.ts реэкспортируется:
+
+  * Функция:
+      - initDevToolsManager(options?) => DevToolsManager
+
+  * Типы:
+      - DevToolsManager
+      - InitDevToolsManagerOptions
+      - ManagerSnapshot
+      - ManagerTabInfo
+      - ManagerTargetInfo
+      - PersistenceAdapter
+      - PersistedUiState
+      - TargetContext
+      - TargetLike
+      - TargetMeta
+
+  Поверхность узкая и сфокусированная — это плюс. Больше никаких
+  рендерных компонентов, IPC-каналов, внутренних утилит наружу не торчит.
+
+2. Сильные стороны
+------------------
++ Чёткое разделение публичного и внутреннего: contracts.ts описывает
+  только то, что нужно потребителю, а Overlay*/IPC-каналы остаются
+  внутренними (хоть и физически в том же файле).
++ "Ленивая" инициализация: initDevToolsManager() возвращает API
+  немедленно, реальная работа стартует после app.whenReady().
++ Sensible defaults: autoDetect=true, autoShow=true, фильтр своих
+  WebContents, фильтр devtools://, persistence в userData.
++ Гибкие точки расширения через колбэки:
+  shouldManageWebContents, resolveTargetMeta, persistence.
++ TargetLike (WebContents | WebContentsView | RuntimeTargetId) — удобный
+  union для всех методов, оперирующих целью.
++ Метаданные расширяемы: TargetMeta допускает [key: string]: unknown.
++ README покрывает основные сценарии и актуальную поверхность API.
++ sideEffects: false — позволит tree-shake'ингу для рендера.
+
+3. Замечания и потенциальные проблемы
+-------------------------------------
+
+3.1. Глобальное состояние модуля (singleton)
+   Все данные хранятся в module-level state объекте. Последствия:
+   - Повторный вызов initDevToolsManager() лишь перезаписывает
+     state.options и НЕ перезапускает autoShow/autoDetect (guard
+     state.initialized). Поведение нигде не задокументировано.
+     Рекомендация: либо явно warn'ить при повторе, либо мержить
+     options и идемпотентно реагировать.
+   - В одном процессе нельзя иметь два менеджера. Для теста/CI/
+     hot-reload это серьёзно ограничивает гибкость.
+
+3.2. Отсутствие dispose/teardown
+   IPC-хендлеры регистрируются через ipcMain.handle и app.on(
+   'web-contents-created', ...). Ни одного публичного метода для
+   отмены подписок и снятия ipcMain хендлеров нет. Повторный
+   require/инициализация в dev-режиме приведёт к "Attempted to
+   register a second handler" из ipcMain.handle, если только не
+   срабатывает state.ipcBound. Для программного использования
+   (тесты, перезапуск) нужен dispose() или destroy().
+
+3.3. Несимметрия с ManagerSnapshot
+   Тип ManagerSnapshot экспортируется, но в DevToolsManager нет
+   метода getSnapshot() / subscribe(). Клиент главного процесса
+   может получить только listTargets()/listTabs(), без uiState и
+   activeTabId. Снапшот идёт лишь по IPC во встроенный UI.
+   Рекомендация: добавить getSnapshot() и onChange(listener) для
+   симметрии и реактивных интеграций.
+
+3.4. Нет наблюдаемости (events / subscribe)
+   Программный консьюмер не может узнать, когда таб открылся,
+   закрылся, тема изменилась и т.п. Только встроенный UI получает
+   IPC-broadcast. Это резко ограничивает интеграцию пакета как
+   building block.
+
+3.5. registerTarget: непрозрачная природа undefined
+   registerTarget возвращает RuntimeTargetId | undefined. Причин у
+   undefined три (WebContents уничтожен; включён в internal и
+   includeSelf=false; runtimeId отсутствует). Колбэк/событие, по
+   которым понятно, почему регистрация не прошла, отсутствует.
+   Это создаёт "тихий" failure-mode.
+
+3.6. registerTarget принимает только WebContents | WebContentsView
+   Все остальные методы — TargetLike (включая RuntimeTargetId).
+   Разное поведение объяснимо (по id невозможно создать запись), но
+   стоит явно отметить в JSDoc и/или README.
+
+3.7. Поле TargetMeta.persistentId
+   Поле объявлено в TargetMeta, но публичный API не предоставляет
+   способа адресовать таргет по persistentId — TargetLike его не
+   допускает, openTab/registerTarget по строке невозможны. Сейчас
+   это "висящее" обещание стабильности через рестарты, без
+   реализации. Либо удалить из публичных типов, либо реализовать
+   resolve по persistentId.
+
+3.8. ThemeMode и другие type-aliases не экспортированы
+   PersistedUiState.theme имеет тип ThemeMode = 'system'|'light'|
+   'dark', но сам ThemeMode не реэкспортирован. Аналогично
+   RuntimeTargetId, PersistentTargetId, OverlayMenuKind. Клиент
+   вынужден дублировать union'ы или импортировать из приватных
+   путей. Рекомендуется добавить ThemeMode и RuntimeTargetId в
+   реэкспорт.
+
+3.9. Тихое подавление ошибок
+   Многие места используют try{...}catch{} без логов. Особенно:
+   - persistence.save (адаптер пользователя может упасть — данные
+     теряются молча);
+   - applyThemeToDevToolsWebContents (отказ debugger.attach);
+   - focusSource, openDevTools.
+   Рекомендация: либо console.warn, либо опция onError в
+   InitDevToolsManagerOptions для делегирования логирования.
+
+3.10. Семантика autoShow: false
+   Окно не создаётся до первого show()/toggle(). Описано в README,
+   но не отмечено, что persistence.windowBounds применяются только
+   при первом createManagerWindow(); восстановление координат
+   возможно только если persistence.load() уже завершилась к
+   моменту вызова show(). Может быть гонкой, если пользователь
+   вызывает show() раньше, чем app.whenReady().then(start)
+   успевает прочесть state.
+
+3.11. unloadTab vs closeTab
+   В README различие описано одной строкой. Стоит явно зафиксировать
+   контракт: unloadTab сохраняет позицию вкладки в табс-баре
+   (loaded:false), closeTab удаляет полностью. Иначе из имён это не
+   очевидно.
+
+3.12. setMeta всегда триггерит broadcastSnapshot()
+   Даже если meta идентична. Для частых апдейтов (например, при
+   стриминге title) можно добавить shallow-equality проверку.
+
+3.13. refreshTargets и autoDetect=false
+   README: "only relevant with autoDetect". На самом деле метод
+   работает всегда: проходит по webContents.getAllWebContents() и
+   регистрирует через тот же фильтр shouldManageWebContents.
+   Поведение полезное, но описание не соответствует. Уточнить
+   формулировку или ограничить вызов.
+
+3.14. PersistenceAdapter контракт
+   - load() может возвращать undefined / Promise<undefined> —
+     это уже отражено в типе, ок.
+   - save() в дефолтной реализации не атомарен (writeFile поверх
+     файла). При краше во время записи возможна потеря состояния.
+     Опционально: writeFile + rename.
+   - Нет дебаунса/throttling в API: schedulePersistenceSave() —
+     внутренний микротаск; пользователь, реализующий save в свой
+     storage, может получать частые вызовы.
+
+3.15. includeSelf
+   Корректно описан как "только для дебага самого пакета", но
+   когда включён — стоит дополнительно предупредить о возможной
+   рекурсии DevTools-of-DevTools.
+
+3.16. Отсутствие batch-API
+   registerTarget/unregisterTarget — поэлементно. Для приложений с
+   десятками BrowserView/WebContentsView это шумно. Опционально:
+   registerTargets(targets) / setTargets(targets).
+
+3.17. Тип InitDevToolsManagerOptions
+   Все поля опциональны, но нет JSDoc. Полезно добавить @default-
+   аннотации (autoDetect=true, autoShow=true, includeSelf=false),
+   чтобы пользователю не приходилось лезть в README.
+
+3.18. Поведение при app до whenReady
+   Если initDevToolsManager вызвать ДО whenReady, реальный старт
+   попадает в app.whenReady().then(start). Это работает, но
+   manager.show()/toggle() вернут окно сразу, пробуя
+   createManagerWindow() ещё до того, как BaseWindow можно
+   создать. README предупреждает, но в типах это никак не
+   усилено. Можно бросать понятную ошибку из show()/toggle(), если
+   !app.isReady().
+
+3.19. Отсутствие версии CDP/electron в типах
+   Манипуляции с debugger.attach('1.3') и
+   webContents.setDevToolsWebContents — main-process-only API,
+   доступное в Electron 30+. Это уже отражено в peerDeps, ок.
+
+4. Проверки совместимости
+-------------------------
+- ESM/CJS dual: ok (main/module + exports map).
+- types: dist/index.d.ts корректно реэкспортирует и функцию, и типы.
+- "sideEffects": false — оправдано, т.к. модуль чисто декларативный
+  до вызова init.
+
+5. Сводный список рекомендаций (по приоритету)
+----------------------------------------------
+P1 (до 1.0):
+  * Добавить getSnapshot() и подписку (onChange/onTabsChanged/
+    onTargetsChanged) в DevToolsManager.
+  * Добавить dispose()/destroy(): снятие ipcMain.handle, app.off,
+    закрытие окна, очистка state.
+  * Реэкспортировать ThemeMode (и, возможно, RuntimeTargetId).
+  * Решить судьбу persistentId: реализовать resolver по строковому
+    id ИЛИ удалить из публичного типа.
+  * onError-колбэк или хотя бы console.warn вместо тихих catch{}.
+
+P2 (улучшения):
+  * Идемпотентное поведение initDevToolsManager при повторных вызовах
+    + предупреждение, если options меняются.
+  * JSDoc с @default для всех полей InitDevToolsManagerOptions.
+  * Уточнить README по refreshTargets и unloadTab vs closeTab.
+  * Бросать понятную ошибку из show()/toggle() до app.whenReady().
+
+P3 (nice to have):
+  * registerTargets(targets[]) / setTargets(...) для batch.
+  * Атомарная запись persistence (write+rename).
+  * Дебаунс/throttle для setMeta-обновлений.
+
+Итог
+----
+API минималистичный и читаемый, основное полотно (initDevToolsManager
++ DevToolsManager) удобно для типового сценария "включить и забыть".
+Главные пробелы — наблюдаемость (нет событий/snapshot getter'а),
+жизненный цикл (нет dispose), и несколько "висящих" сущностей в
+типах (persistentId, ThemeMode не экспортирован). Всё перечисленное стоит закрыть до стабилизации 1.0,
+поскольку это база контракта, а не косметика.
