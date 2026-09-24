@@ -4,6 +4,7 @@ import {
   app,
   BaseWindow,
   BrowserWindow,
+  View,
   WebContentsView,
   ipcMain,
   webContents as webContentsModule,
@@ -50,6 +51,12 @@ interface ManagedTabRecord {
   error: string | null;
 }
 
+interface SourceHighlight {
+  window: BaseWindow;
+  fill: View;
+  edges: [View, View, View, View];
+}
+
 type ShortcutAction =
   | { kind: 'open-target-picker' }
   | { kind: 'close-active' }
@@ -68,6 +75,8 @@ interface InternalState {
   activeTabId: RuntimeTargetId | null;
   notices: ManagerNotice[];
   lastNoticeId: number;
+  sourceHighlight: SourceHighlight | null;
+  sourceHighlightTimer: ReturnType<typeof setTimeout> | null;
   suppressedTargets: Set<RuntimeTargetId>;
   internalWebContentsIds: Set<number>;
   persistedUiState: PersistedUiState;
@@ -81,6 +90,10 @@ interface InternalState {
 const MANAGER_HEADER_HEIGHT = 26;
 const MAX_NOTICES = 3;
 const NOTICE_TIMEOUT_MS = { info: 6000, error: 10000 } as const;
+const SOURCE_HIGHLIGHT_MS = 1500;
+const SOURCE_HIGHLIGHT_BORDER = 3;
+const SOURCE_HIGHLIGHT_COLOR = '#1a73e8';
+const SOURCE_HIGHLIGHT_FILL = '#331a73e8';
 const DEBUGGER_PROTOCOL_VERSION = '1.3';
 const CLOSED_OVERLAY_STATE: ManagerOverlayState = {
   open: false,
@@ -98,6 +111,8 @@ const state: InternalState = {
   activeTabId: null,
   notices: [],
   lastNoticeId: 0,
+  sourceHighlight: null,
+  sourceHighlightTimer: null,
   suppressedTargets: new Set(),
   internalWebContentsIds: new Set(),
   persistedUiState: {},
@@ -1030,6 +1045,159 @@ function focusSource(target: TargetLike) {
   }
 }
 
+function intersectRects(left: Rectangle, right: Rectangle): Rectangle | null {
+  const x = Math.max(left.x, right.x);
+  const y = Math.max(left.y, right.y);
+  const width = Math.min(left.x + left.width, right.x + right.width) - x;
+  const height = Math.min(left.y + left.height, right.y + right.height) - y;
+  return width > 0 && height > 0 ? { x, y, width, height } : null;
+}
+
+/** Finds the view hosting `webContents` and returns its rect relative to the window content. */
+function findHostViewRect(
+  parent: View,
+  webContents: WebContents,
+  originX = 0,
+  originY = 0,
+): Rectangle | null {
+  for (const child of parent.children) {
+    // `getVisible()` only exists on newer Electron versions.
+    const { getVisible } = child as View & { getVisible?: () => boolean };
+    if (getVisible && !getVisible.call(child)) {
+      continue;
+    }
+
+    const bounds = child.getBounds();
+    const rect: Rectangle = {
+      x: originX + bounds.x,
+      y: originY + bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+    };
+    if (child instanceof WebContentsView && child.webContents.id === webContents.id) {
+      return rect;
+    }
+
+    const nestedRect = findHostViewRect(child, webContents, rect.x, rect.y);
+    if (nestedRect) {
+      return nestedRect;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Computes where a target is currently drawn on screen. This uses live view geometry rather than
+ * `meta.bounds`, which describes the owner window and goes stale when the app relayouts.
+ */
+function getSourceScreenRect(webContents: WebContents): Rectangle | null {
+  for (const window of BaseWindow.getAllWindows()) {
+    if (window === state.sourceHighlight?.window || window.isDestroyed()) {
+      continue;
+    }
+
+    const content = window.getContentBounds();
+    const rect =
+      window instanceof BrowserWindow && window.webContents.id === webContents.id
+        ? { x: 0, y: 0, width: content.width, height: content.height }
+        : findHostViewRect(window.contentView, webContents);
+    if (!rect) {
+      continue;
+    }
+
+    if (!window.isVisible() || window.isMinimized()) {
+      return null;
+    }
+
+    const visibleRect = intersectRects(rect, { ...content, x: 0, y: 0 });
+    return (
+      visibleRect && { ...visibleRect, x: content.x + visibleRect.x, y: content.y + visibleRect.y }
+    );
+  }
+
+  return null;
+}
+
+function createSourceHighlight(): SourceHighlight {
+  // A bare window without WebContents: it never shows up as a target and cannot take input.
+  const window = new BaseWindow({
+    show: false,
+    frame: false,
+    transparent: true,
+    focusable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    hasShadow: false,
+  });
+  window.setIgnoreMouseEvents(true);
+
+  const fill = new View();
+  fill.setBackgroundColor(SOURCE_HIGHLIGHT_FILL);
+  window.contentView.addChildView(fill);
+
+  const edges = [new View(), new View(), new View(), new View()] as SourceHighlight['edges'];
+  for (const edge of edges) {
+    edge.setBackgroundColor(SOURCE_HIGHLIGHT_COLOR);
+    window.contentView.addChildView(edge);
+  }
+
+  return { window, fill, edges };
+}
+
+function clearSourceHighlight() {
+  if (state.sourceHighlightTimer != null) {
+    clearTimeout(state.sourceHighlightTimer);
+    state.sourceHighlightTimer = null;
+  }
+
+  // Destroyed rather than hidden, so an idle highlight window never keeps the app alive.
+  const highlight = state.sourceHighlight;
+  state.sourceHighlight = null;
+  if (highlight && !highlight.window.isDestroyed()) {
+    highlight.window.destroy();
+  }
+}
+
+/**
+ * Briefly outlines the target's view on screen. Returns false when the target is not currently
+ * visible, e.g. its window is hidden or minimized or the view has no on-screen area.
+ */
+function identifySource(target: TargetLike) {
+  const runtimeId = toRuntimeTargetId(target);
+  const webContents = runtimeId == null ? undefined : state.targets.get(runtimeId)?.webContents;
+  const rect = webContents && !webContents.isDestroyed() ? getSourceScreenRect(webContents) : null;
+  if (!rect) {
+    clearSourceHighlight();
+    return false;
+  }
+
+  if (!state.sourceHighlight || state.sourceHighlight.window.isDestroyed()) {
+    state.sourceHighlight = createSourceHighlight();
+  }
+
+  const { window, fill, edges } = state.sourceHighlight;
+  const { width, height } = rect;
+  const border = SOURCE_HIGHLIGHT_BORDER;
+  window.setBounds(rect);
+  fill.setBounds({ x: 0, y: 0, width, height });
+  edges[0].setBounds({ x: 0, y: 0, width, height: border });
+  edges[1].setBounds({ x: 0, y: height - border, width, height: border });
+  edges[2].setBounds({ x: 0, y: 0, width: border, height });
+  edges[3].setBounds({ x: width - border, y: 0, width: border, height });
+  window.showInactive();
+
+  if (state.sourceHighlightTimer != null) {
+    clearTimeout(state.sourceHighlightTimer);
+  }
+  state.sourceHighlightTimer = setTimeout(clearSourceHighlight, SOURCE_HIGHLIGHT_MS);
+  return true;
+}
+
 function setMeta(target: TargetLike, meta: Partial<TargetMeta>) {
   const runtimeId = toRuntimeTargetId(target);
   if (runtimeId == null) {
@@ -1308,6 +1476,7 @@ function createManagerWindow() {
     state.managerOverlayView = null;
     state.overlayRequest = null;
     state.overlayState = CLOSED_OVERLAY_STATE;
+    clearSourceHighlight();
   });
 
   managerUiView.webContents.on('before-input-event', handleShortcutInput);
@@ -1374,6 +1543,16 @@ function wireIpc() {
     schedulePersistenceSave();
     broadcastSnapshot();
   });
+  ipcMain.handle(
+    IPC_CHANNELS.identifySource,
+    (_event: unknown, runtimeId: number, reportUnavailable: boolean) => {
+      if (!identifySource(runtimeId) && reportUnavailable) {
+        pushNotice('info', `"${getTargetLabel(runtimeId)}" isn't visible on screen right now.`);
+        broadcastSnapshot();
+      }
+    },
+  );
+  ipcMain.handle(IPC_CHANNELS.clearSourceHighlight, () => clearSourceHighlight());
   ipcMain.handle(IPC_CHANNELS.dismissNotice, (_event: unknown, id: number) => dismissNotice(id));
   ipcMain.handle(IPC_CHANNELS.openOverlay, (_event: unknown, request: OverlayTriggerRequest) =>
     openOverlay(request),

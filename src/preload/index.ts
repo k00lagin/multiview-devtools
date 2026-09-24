@@ -51,6 +51,9 @@ const bridge: RendererBridge = {
   closeTabsRightOf: (runtimeId) => ipcRenderer.invoke(IPC_CHANNELS.closeTabsRightOf, runtimeId),
   closeOtherTabs: (runtimeId) => ipcRenderer.invoke(IPC_CHANNELS.closeOtherTabs, runtimeId),
   focusSource: (runtimeId) => ipcRenderer.invoke(IPC_CHANNELS.focusSource, runtimeId),
+  identifySource: (runtimeId, reportUnavailable = false) =>
+    ipcRenderer.invoke(IPC_CHANNELS.identifySource, runtimeId, reportUnavailable),
+  clearSourceHighlight: () => ipcRenderer.invoke(IPC_CHANNELS.clearSourceHighlight),
   setTheme: (theme) => ipcRenderer.invoke(IPC_CHANNELS.setTheme, theme),
   dismissNotice: (id) => ipcRenderer.invoke(IPC_CHANNELS.dismissNotice, id),
   openOverlay: (request) => ipcRenderer.invoke(IPC_CHANNELS.openOverlay, request),

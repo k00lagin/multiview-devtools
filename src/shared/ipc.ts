@@ -22,6 +22,8 @@ export const IPC_CHANNELS = {
   closeTabsRightOf: 'mvdm:close-tabs-right-of',
   closeOtherTabs: 'mvdm:close-other-tabs',
   focusSource: 'mvdm:focus-source',
+  identifySource: 'mvdm:identify-source',
+  clearSourceHighlight: 'mvdm:clear-source-highlight',
   setTheme: 'mvdm:set-theme',
   dismissNotice: 'mvdm:dismiss-notice',
   openOverlay: 'mvdm:open-overlay',
@@ -47,6 +49,9 @@ export interface RendererBridge {
   closeTabsRightOf: (runtimeId: number) => Promise<void>;
   closeOtherTabs: (runtimeId: number) => Promise<void>;
   focusSource: (runtimeId: number) => Promise<void>;
+  /** Outlines the target on screen; `reportUnavailable` shows a notice when it isn't visible. */
+  identifySource: (runtimeId: number, reportUnavailable?: boolean) => Promise<void>;
+  clearSourceHighlight: () => Promise<void>;
   setTheme: (theme: ThemeMode) => Promise<void>;
   dismissNotice: (id: number) => Promise<void>;
   openOverlay: (request: OverlayTriggerRequest) => Promise<void>;

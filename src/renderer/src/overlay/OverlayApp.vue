@@ -45,6 +45,10 @@ async function handleTargetSelect(runtimeId: number) {
   await closeOverlay();
 }
 
+async function handleTargetIdentify(runtimeId: number) {
+  await window.multiviewDevtools.identifySource(runtimeId);
+}
+
 async function handleThemeSelect(theme: ThemeMode) {
   await window.multiviewDevtools.setTheme(theme);
   await closeOverlay();
@@ -70,6 +74,9 @@ async function handleTabAction(action: string, runtimeId: number) {
     case 'focus-source':
       await window.multiviewDevtools.focusSource(runtimeId);
       break;
+    case 'identify-source':
+      await window.multiviewDevtools.identifySource(runtimeId, true);
+      break;
     default:
       return;
   }
@@ -89,6 +96,16 @@ onBeforeUnmount(() => {
   unsubscribe?.();
   window.removeEventListener('keydown', handleKeydown);
 });
+
+// The picker outlines the highlighted target; drop that outline once the picker goes away.
+watch(
+  () => overlayState.value.menu?.kind,
+  (kind, previousKind) => {
+    if (previousKind === 'target-picker' && kind !== 'target-picker') {
+      void window.multiviewDevtools.clearSourceHighlight();
+    }
+  },
+);
 
 watch(
   currentTheme,
@@ -114,6 +131,7 @@ watch(
         :menu="overlayState.menu"
         @close="closeOverlay"
         @select-runtime="handleTargetSelect"
+        @identify="handleTargetIdentify"
       />
 
       <ThemeMenuOverlay

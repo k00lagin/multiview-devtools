@@ -69,6 +69,14 @@ export function useManagerState() {
     await window.multiviewDevtools.focusSource(runtimeId);
   }
 
+  async function identifySource(runtimeId: number) {
+    await window.multiviewDevtools.identifySource(runtimeId);
+  }
+
+  async function clearSourceHighlight() {
+    await window.multiviewDevtools.clearSourceHighlight();
+  }
+
   async function setTheme(theme: ThemeMode) {
     await window.multiviewDevtools.setTheme(theme);
   }
@@ -86,6 +94,8 @@ export function useManagerState() {
     closeTabsRightOf,
     closeOtherTabs,
     focusSource,
+    identifySource,
+    clearSourceHighlight,
     setTheme,
   };
 }

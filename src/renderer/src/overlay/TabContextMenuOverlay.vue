@@ -39,6 +39,14 @@ const title = computed(() => props.menu.tab.meta.title?.trim() || `wc:${props.me
         <div class="overlay-menu__label">Focus Source Target</div>
       </button>
 
+      <button
+        class="overlay-menu__item"
+        type="button"
+        @click="emit('action', 'identify-source', props.menu.runtimeId)"
+      >
+        <div class="overlay-menu__label">Identify Source</div>
+      </button>
+
       <div class="overlay-menu__separator" />
 
       <button

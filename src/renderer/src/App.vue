@@ -12,8 +12,17 @@ import TargetPickerButton from './components/TargetPickerButton.vue';
 import ThemePickerButton from './components/ThemePickerButton.vue';
 import { useManagerState } from './composables/useManagerState';
 
-const { snapshot, refreshTargets, activateTab, closeTab, moveTab, dismissNotice, focusSource } =
-  useManagerState();
+const {
+  snapshot,
+  refreshTargets,
+  activateTab,
+  closeTab,
+  moveTab,
+  dismissNotice,
+  focusSource,
+  identifySource,
+  clearSourceHighlight,
+} = useManagerState();
 
 const targetPickerButton = ref<InstanceType<typeof TargetPickerButton> | null>(null);
 const selectedTheme = computed<ThemeMode>(() => snapshot.value.uiState.theme ?? 'system');
@@ -99,6 +108,8 @@ watch(
         @focus="focusSource"
         @reorder="reorderTabs"
         @tab-menu="openTabContextMenu"
+        @identify="identifySource"
+        @identify-end="clearSourceHighlight"
       />
 
       <TargetPickerButton ref="targetPickerButton" @trigger="openTargetPicker" />

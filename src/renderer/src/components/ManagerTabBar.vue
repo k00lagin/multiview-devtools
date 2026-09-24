@@ -13,6 +13,8 @@ const emit = defineEmits<{
   focus: [runtimeId: number];
   reorder: [fromIndex: number, toIndex: number];
   tabMenu: [payload: { runtimeId: number; point: { x: number; y: number } }];
+  identify: [runtimeId: number];
+  identifyEnd: [];
 }>();
 
 const tabsScroller = ref<HTMLElement | null>(null);
@@ -33,9 +35,36 @@ let scrollActiveTimer: number | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let scrollbarDragStartX = 0;
 let scrollbarDragStartScrollLeft = 0;
+let identifyTimer: number | null = null;
 
 const SCROLLBAR_TRACK_END_INSET = 10;
 const MIN_SCROLLBAR_THUMB_WIDTH = 28;
+// Hover intent, so sweeping the pointer across the tab bar doesn't flash every source.
+const IDENTIFY_HOVER_DELAY_MS = 250;
+
+function cancelIdentify() {
+  if (identifyTimer != null) {
+    window.clearTimeout(identifyTimer);
+    identifyTimer = null;
+  }
+}
+
+function onTabPointerEnter(runtimeId: number) {
+  cancelIdentify();
+  if (draggingIndex.value != null) {
+    return;
+  }
+
+  identifyTimer = window.setTimeout(() => {
+    identifyTimer = null;
+    emit('identify', runtimeId);
+  }, IDENTIFY_HOVER_DELAY_MS);
+}
+
+function onTabPointerLeave() {
+  cancelIdentify();
+  emit('identifyEnd');
+}
 
 function tabTooltip(tab: ManagerTabInfo) {
   const lines = [tab.meta.title ?? `wc:${tab.runtimeId}`];
@@ -209,6 +238,7 @@ const scrollbarThumbStyle = computed<Record<string, string> | undefined>(() => {
 });
 
 function onDragStart(event: DragEvent, index: number) {
+  onTabPointerLeave();
   event.dataTransfer?.setData('text/plain', String(index));
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move';
@@ -459,6 +489,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   resizeObserver?.disconnect();
   clearScrollActiveTimer();
+  cancelIdentify();
   clearScrollbarDrag();
 });
 
@@ -515,6 +546,8 @@ watch(
             point: { x: $event.clientX, y: $event.clientY },
           })
         "
+        @pointerenter="onTabPointerEnter(tab.runtimeId)"
+        @pointerleave="onTabPointerLeave"
         @dragstart="onDragStart($event, index)"
         @dragover="onTabDragOver"
         @dragend="onDragEnd"

@@ -56,6 +56,12 @@ Methods accepting `target` accept a `WebContents`, a `WebContentsView`, or a num
 - `focusSource(target)` — focus the owning window and the source `WebContents`.
 - `setMeta(target, meta)` — patch the metadata used by the UI.
 
+## Identifying targets
+
+Hovering a tab, or highlighting a row in the target picker, briefly outlines that target's `WebContentsView` on screen. The tab context menu's **Identify Source** does the same on demand and reports when the target isn't visible (hidden or minimized window, zero-size view). The outline is computed from live view geometry, so it stays correct after the app relayouts.
+
+On Electron versions without `View.getVisible()` (e.g. 30), a view hidden with `setVisible(false)` is still outlined at its last bounds.
+
 ## Keyboard shortcuts
 
 Shortcuts work inside the manager window, including while a DevTools tab has focus. Use `Cmd` instead of `Ctrl` on macOS.

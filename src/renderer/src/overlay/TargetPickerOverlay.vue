@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import type { ManagerTargetInfo, TargetPickerOverlayMenu } from '@shared/contracts';
 
@@ -10,7 +10,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   selectRuntime: [runtimeId: number];
+  identify: [runtimeId: number];
 }>();
+
+// Short debounce so holding an arrow key or sweeping the list doesn't flash every source.
+const IDENTIFY_DELAY_MS = 150;
+let identifyTimer: number | null = null;
 
 const searchQuery = ref('');
 const searchInput = ref<HTMLInputElement | null>(null);
@@ -121,6 +126,30 @@ function onSearchKeydown(event: KeyboardEvent) {
 
 watch(searchQuery, () => {
   highlightedIndex.value = 0;
+});
+
+// Not immediate: opening the picker shouldn't flash the first row before the user moves.
+watch(
+  () => highlightedTarget.value?.runtimeId,
+  (runtimeId) => {
+    if (identifyTimer != null) {
+      window.clearTimeout(identifyTimer);
+      identifyTimer = null;
+    }
+
+    if (runtimeId != null) {
+      identifyTimer = window.setTimeout(() => {
+        identifyTimer = null;
+        emit('identify', runtimeId);
+      }, IDENTIFY_DELAY_MS);
+    }
+  },
+);
+
+onBeforeUnmount(() => {
+  if (identifyTimer != null) {
+    window.clearTimeout(identifyTimer);
+  }
 });
 
 onMounted(() => {
